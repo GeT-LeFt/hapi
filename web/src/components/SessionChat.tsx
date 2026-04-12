@@ -332,9 +332,10 @@ export function SessionChat(props: {
     }, [props.api, props.session.id, props.session.active])
 
     const runtime = useHappyRuntime({
-        session: props.session,
         blocks: reconciled.blocks,
         isSending: props.isSending,
+        active: props.session.active,
+        isRunning: props.session.thinking,
         onSendMessage: handleSend,
         onAbort: handleAbort,
         attachmentAdapter,

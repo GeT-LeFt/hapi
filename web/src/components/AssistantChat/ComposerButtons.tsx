@@ -299,6 +299,7 @@ function UnifiedButton(props: {
 export function ComposerButtons(props: {
     canSend: boolean
     controlsDisabled: boolean
+    showAttachmentButton: boolean
     showSettingsButton: boolean
     onSettingsToggle: () => void
     showTerminalButton: boolean
@@ -326,14 +327,16 @@ export function ComposerButtons(props: {
     return (
         <div className="flex items-center justify-between px-2 pb-2">
             <div className="flex items-center gap-1">
-                <ComposerPrimitive.AddAttachment
-                    aria-label={t('composer.attach')}
-                    title={t('composer.attach')}
-                    disabled={props.controlsDisabled}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-fg)]/60 transition-colors hover:bg-[var(--app-bg)] hover:text-[var(--app-fg)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                    <AttachmentIcon />
-                </ComposerPrimitive.AddAttachment>
+                {props.showAttachmentButton ? (
+                    <ComposerPrimitive.AddAttachment
+                        aria-label={t('composer.attach')}
+                        title={t('composer.attach')}
+                        disabled={props.controlsDisabled}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-fg)]/60 transition-colors hover:bg-[var(--app-bg)] hover:text-[var(--app-fg)] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <AttachmentIcon />
+                    </ComposerPrimitive.AddAttachment>
+                ) : null}
 
                 {props.showSettingsButton ? (
                     <button

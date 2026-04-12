@@ -1,24 +1,40 @@
-import { useCallback } from 'react'
+import { AssistantRuntimeProvider } from '@assistant-ui/react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useAppContext } from '@/lib/app-context'
+import { openClawMessagesToChatBlocks } from '@/chat/openclaw'
+import { HappyComposer } from '@/components/AssistantChat/HappyComposer'
+import { HappyThread } from '@/components/AssistantChat/HappyThread'
+import { LoadingState } from '@/components/LoadingState'
+import { OpenClawApprovalCard } from '@/components/OpenClawChat/OpenClawApprovalCard'
+import { useResolveOpenClawApproval } from '@/hooks/mutations/useResolveOpenClawApproval'
+import { useSendOpenClawMessage } from '@/hooks/mutations/useSendOpenClawMessage'
 import { useOpenClawConversation } from '@/hooks/queries/useOpenClawConversation'
 import { useOpenClawMessages } from '@/hooks/queries/useOpenClawMessages'
 import { useOpenClawState } from '@/hooks/queries/useOpenClawState'
-import { useSendOpenClawMessage } from '@/hooks/mutations/useSendOpenClawMessage'
-import { useResolveOpenClawApproval } from '@/hooks/mutations/useResolveOpenClawApproval'
-import { LoadingState } from '@/components/LoadingState'
+import { useHappyRuntime } from '@/lib/assistant-runtime'
+import { useAppContext } from '@/lib/app-context'
 import { useTranslation } from '@/lib/use-translation'
-import { OpenClawComposer } from './OpenClawComposer'
-import { OpenClawThread } from './OpenClawThread'
+
+const noop = () => {}
 
 export function OpenClawChatPage() {
     const navigate = useNavigate()
     const { api } = useAppContext()
     const { t } = useTranslation()
+    const [forceScrollToken, setForceScrollToken] = useState(0)
     const { conversation, isLoading: conversationLoading, error: conversationError } = useOpenClawConversation(api)
     const conversationId = conversation?.id ?? null
-    const { messages, isLoading: messagesLoading, error: messagesError } = useOpenClawMessages(api, conversationId)
-    const { state, isLoading: stateLoading, error: stateError } = useOpenClawState(api, conversationId)
+    const {
+        messages,
+        hasMore,
+        isLoading: messagesLoading,
+        isLoadingMore: messagesLoadingMore,
+        messagesVersion,
+        error: messagesError,
+        loadMore,
+        refetch: refetchMessages
+    } = useOpenClawMessages(api, conversationId)
+    const { state, isLoading: stateLoading, error: stateError, refetch: refetchState } = useOpenClawState(api, conversationId)
     const { sendMessage, isPending: isSending, error: sendError } = useSendOpenClawMessage(api)
     const {
         approve,
@@ -30,6 +46,7 @@ export function OpenClawChatPage() {
     const handleSend = useCallback(async (text: string) => {
         if (!conversationId) return
         await sendMessage(conversationId, text)
+        setForceScrollToken((token) => token + 1)
     }, [conversationId, sendMessage])
 
     const handleApprove = useCallback((requestId: string) => {
@@ -42,10 +59,37 @@ export function OpenClawChatPage() {
         void deny(conversationId, requestId)
     }, [conversationId, deny])
 
+    const refreshOpenClaw = useCallback(() => {
+        void refetchMessages()
+        void refetchState()
+    }, [refetchMessages, refetchState])
+
+    const blocks = useMemo(
+        () => openClawMessagesToChatBlocks(messages),
+        [messages]
+    )
+
+    const runtime = useHappyRuntime({
+        blocks,
+        isSending,
+        active: state?.connected ?? false,
+        isRunning: state?.thinking ?? false,
+        onSendMessage: handleSend,
+        allowSendWhenInactive: false
+    })
+
     const loading = conversationLoading || messagesLoading || stateLoading
     const error = conversationError ?? messagesError ?? stateError ?? sendError ?? approvalError
 
     if (loading && !conversationId) {
+        return (
+            <div className="flex h-full items-center justify-center p-4">
+                <LoadingState label="Loading OpenClaw…" className="text-sm" />
+            </div>
+        )
+    }
+
+    if (!api) {
         return (
             <div className="flex h-full items-center justify-center p-4">
                 <LoadingState label="Loading OpenClaw…" className="text-sm" />
@@ -87,18 +131,54 @@ export function OpenClawChatPage() {
                 ) : null}
             </div>
 
-            <OpenClawThread
-                messages={messages}
-                approvals={state?.pendingApprovals ?? []}
-                approvalsDisabled={isResolvingApproval}
-                onApprove={handleApprove}
-                onDeny={handleDeny}
-            />
+            <AssistantRuntimeProvider runtime={runtime}>
+                <div className="relative flex min-h-0 flex-1 flex-col">
+                    <HappyThread
+                        api={api}
+                        sessionId={conversationId ?? 'openclaw'}
+                        metadata={null}
+                        disabled={!state?.connected}
+                        onRefresh={refreshOpenClaw}
+                        onFlushPending={noop}
+                        onAtBottomChange={noop}
+                        isLoadingMessages={messagesLoading}
+                        messagesWarning={null}
+                        hasMoreMessages={hasMore}
+                        isLoadingMoreMessages={messagesLoadingMore}
+                        onLoadMore={loadMore}
+                        pendingCount={0}
+                        rawMessagesCount={messages.length}
+                        normalizedMessagesCount={blocks.length}
+                        messagesVersion={messagesVersion}
+                        forceScrollToken={forceScrollToken}
+                    />
 
-            <OpenClawComposer
-                disabled={!conversationId || isSending}
-                onSend={handleSend}
-            />
+                    {(state?.pendingApprovals?.length ?? 0) > 0 ? (
+                        <div className="border-t border-[var(--app-border)] px-3 py-3">
+                            <div className="mx-auto flex w-full max-w-content flex-col gap-3">
+                                {state?.pendingApprovals?.map((approval) => (
+                                    <OpenClawApprovalCard
+                                        key={approval.id}
+                                        approval={approval}
+                                        disabled={isResolvingApproval}
+                                        onApprove={() => handleApprove(approval.id)}
+                                        onDeny={() => handleDeny(approval.id)}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
+
+                    <HappyComposer
+                        disabled={!conversationId || isSending || !state?.connected}
+                        active={state?.connected ?? false}
+                        thinking={state?.thinking ?? false}
+                        agentState={null}
+                        attachmentsEnabled={false}
+                        enableAbort={false}
+                    />
+                </div>
+            </AssistantRuntimeProvider>
         </div>
     )
 }

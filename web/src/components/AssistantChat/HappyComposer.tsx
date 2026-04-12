@@ -64,6 +64,8 @@ export function HappyComposer(props: {
     onSwitchToRemote?: () => void
     onTerminal?: () => void
     terminalUnsupported?: boolean
+    attachmentsEnabled?: boolean
+    enableAbort?: boolean
     autocompletePrefixes?: string[]
     autocompleteSuggestions?: (query: string) => Promise<Suggestion[]>
     // Voice assistant props
@@ -97,6 +99,8 @@ export function HappyComposer(props: {
         onSwitchToRemote,
         onTerminal,
         terminalUnsupported = false,
+        attachmentsEnabled = true,
+        enableAbort = true,
         autocompletePrefixes = ['@', '/', '$'],
         autocompleteSuggestions = defaultSuggestionHandler,
         voiceStatus = 'disconnected',
@@ -350,7 +354,7 @@ export function HappyComposer(props: {
             }
         }
 
-        if (key === 'Escape' && threadIsRunning) {
+        if (enableAbort && key === 'Escape' && threadIsRunning) {
             e.preventDefault()
             handleAbort()
             return
@@ -372,6 +376,7 @@ export function HappyComposer(props: {
         clearSuggestions,
         handleSuggestionSelect,
         threadIsRunning,
+        enableAbort,
         handleAbort,
         onPermissionModeChange,
         permissionMode,
@@ -411,6 +416,9 @@ export function HappyComposer(props: {
     }, [])
 
     const handlePaste = useCallback(async (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+        if (!attachmentsEnabled) {
+            return
+        }
         const files = Array.from(e.clipboardData?.files || [])
         const imageFiles = files.filter(file => file.type.startsWith('image/'))
 
@@ -425,7 +433,7 @@ export function HappyComposer(props: {
         } catch (error) {
             console.error('Error adding pasted image:', error)
         }
-    }, [api])
+    }, [api, attachmentsEnabled])
 
     const handleSettingsToggle = useCallback(() => {
         haptic('light')
@@ -487,7 +495,7 @@ export function HappyComposer(props: {
         || showModelReasoningEffortSettings
         || showEffortSettings
     )
-    const showAbortButton = true
+    const showAbortButton = enableAbort
     const voiceEnabled = Boolean(onVoiceToggle)
 
     const handleSend = useCallback(() => {
@@ -791,11 +799,12 @@ export function HappyComposer(props: {
                             />
                         </div>
 
-                        <ComposerButtons
-                            canSend={canSend}
-                            controlsDisabled={controlsDisabled}
-                            showSettingsButton={showSettingsButton}
-                            onSettingsToggle={handleSettingsToggle}
+                            <ComposerButtons
+                                canSend={canSend}
+                                controlsDisabled={controlsDisabled}
+                                showAttachmentButton={attachmentsEnabled}
+                                showSettingsButton={showSettingsButton}
+                                onSettingsToggle={handleSettingsToggle}
                             showTerminalButton={showTerminalButton}
                             terminalDisabled={terminalDisabled}
                             terminalLabel={terminalLabel}

@@ -5,7 +5,7 @@ import { safeStringify } from '@hapi/protocol'
 import { renderEventLabel } from '@/chat/presentation'
 import type { ChatBlock, CliOutputBlock } from '@/chat/types'
 import type { AgentEvent, ToolCallBlock } from '@/chat/types'
-import type { AttachmentMetadata, MessageStatus as HappyMessageStatus, Session } from '@/types/api'
+import type { AttachmentMetadata, MessageStatus as HappyMessageStatus } from '@/types/api'
 
 export type HappyChatMessageMetadata = {
     kind: 'user' | 'assistant' | 'tool' | 'event' | 'cli-output'
@@ -169,11 +169,12 @@ function extractMessageContent(message: AppendMessage): { text: string; attachme
 }
 
 export function useHappyRuntime(props: {
-    session: Session
     blocks: readonly ChatBlock[]
     isSending: boolean
+    active: boolean
+    isRunning: boolean
     onSendMessage: (text: string, attachments?: AttachmentMetadata[]) => void
-    onAbort: () => Promise<void>
+    onAbort?: () => Promise<void>
     attachmentAdapter?: AttachmentAdapter
     allowSendWhenInactive?: boolean
 }) {
@@ -182,7 +183,7 @@ export function useHappyRuntime(props: {
     const convertedMessages = useExternalMessageConverter<ChatBlock>({
         callback: toThreadMessageLike,
         messages: props.blocks as ChatBlock[],
-        isRunning: props.session.thinking,
+        isRunning: props.isRunning,
     })
 
     const onNew = useCallback(async (message: AppendMessage) => {
@@ -192,24 +193,24 @@ export function useHappyRuntime(props: {
     }, [props.onSendMessage])
 
     const onCancel = useCallback(async () => {
-        await props.onAbort()
+        await props.onAbort?.()
     }, [props.onAbort])
 
     // Memoize the adapter to avoid recreating on every render
     // useExternalStoreRuntime may use adapter identity for subscriptions
     const adapter = useMemo(() => ({
-        isDisabled: props.isSending || (!props.session.active && !props.allowSendWhenInactive),
-        isRunning: props.session.thinking,
+        isDisabled: props.isSending || (!props.active && !props.allowSendWhenInactive),
+        isRunning: props.isRunning,
         messages: convertedMessages,
         onNew,
         onCancel,
         adapters: props.attachmentAdapter ? { attachments: props.attachmentAdapter } : undefined,
         unstable_capabilities: { copy: true }
     }), [
-        props.session.active,
+        props.active,
         props.isSending,
         props.allowSendWhenInactive,
-        props.session.thinking,
+        props.isRunning,
         convertedMessages,
         onNew,
         onCancel,

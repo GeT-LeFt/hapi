@@ -1,13 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { OpenClawChatPage } from './OpenClawChatPage'
 import { useNavigate } from '@tanstack/react-router'
 import { useAppContext } from '@/lib/app-context'
+import { useHappyRuntime } from '@/lib/assistant-runtime'
 import { useOpenClawConversation } from '@/hooks/queries/useOpenClawConversation'
 import { useOpenClawMessages } from '@/hooks/queries/useOpenClawMessages'
 import { useOpenClawState } from '@/hooks/queries/useOpenClawState'
 import { useSendOpenClawMessage } from '@/hooks/mutations/useSendOpenClawMessage'
 import { useResolveOpenClawApproval } from '@/hooks/mutations/useResolveOpenClawApproval'
+
+const happyThreadMock = vi.fn()
+const happyComposerMock = vi.fn()
+
+vi.mock('@assistant-ui/react', () => ({
+    AssistantRuntimeProvider: ({ children }: { children: ReactNode }) => <div data-testid="runtime-provider">{children}</div>
+}))
 
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: vi.fn(),
@@ -20,13 +29,29 @@ vi.mock('@/lib/app-context', () => ({
 vi.mock('@/lib/use-translation', () => ({
     useTranslation: () => ({
         t: (key: string) => ({
-            'chat.placeholder': 'Message OpenClaw',
-            'chat.send': 'Send',
             'chat.settings': 'Settings',
             'tool.allow': 'Allow',
             'tool.deny': 'Deny',
         }[key] ?? key)
     }),
+}))
+
+vi.mock('@/lib/assistant-runtime', () => ({
+    useHappyRuntime: vi.fn()
+}))
+
+vi.mock('@/components/AssistantChat/HappyThread', () => ({
+    HappyThread: (props: unknown) => {
+        happyThreadMock(props)
+        return <div data-testid="happy-thread" />
+    }
+}))
+
+vi.mock('@/components/AssistantChat/HappyComposer', () => ({
+    HappyComposer: (props: unknown) => {
+        happyComposerMock(props)
+        return <div data-testid="happy-composer" />
+    }
 }))
 
 vi.mock('@/hooks/queries/useOpenClawConversation', () => ({
@@ -53,6 +78,9 @@ const navigateMock = vi.fn()
 const sendMessageMock = vi.fn()
 const approveMock = vi.fn()
 const denyMock = vi.fn()
+const refetchMessagesMock = vi.fn()
+const refetchStateMock = vi.fn()
+const loadMoreMock = vi.fn()
 
 describe('OpenClawChatPage', () => {
     afterEach(() => {
@@ -68,6 +96,7 @@ describe('OpenClawChatPage', () => {
             token: 'token',
             baseUrl: 'http://localhost:3006'
         })
+        vi.mocked(useHappyRuntime).mockReturnValue({} as never)
         vi.mocked(useOpenClawConversation).mockReturnValue({
             conversation: {
                 id: 'conv-1',
@@ -89,9 +118,13 @@ describe('OpenClawChatPage', () => {
                 createdAt: 1,
                 status: 'completed'
             }],
+            hasMore: false,
             isLoading: false,
+            isLoadingMore: false,
+            messagesVersion: 7,
             error: null,
-            refetch: vi.fn()
+            loadMore: loadMoreMock,
+            refetch: refetchMessagesMock
         })
         vi.mocked(useOpenClawState).mockReturnValue({
             state: {
@@ -110,7 +143,7 @@ describe('OpenClawChatPage', () => {
             },
             isLoading: false,
             error: null,
-            refetch: vi.fn()
+            refetch: refetchStateMock
         })
         vi.mocked(useSendOpenClawMessage).mockReturnValue({
             sendMessage: sendMessageMock.mockResolvedValue(undefined),
@@ -125,22 +158,53 @@ describe('OpenClawChatPage', () => {
         })
     })
 
-    it('renders the OpenClaw thread on the homepage', () => {
+    it('renders OpenClaw header and wires shared chat components with OpenClaw-specific capabilities', () => {
         render(<OpenClawChatPage />)
 
         expect(screen.getByText('OpenClaw Channel')).toBeInTheDocument()
-        expect(screen.getByText('hello from openclaw')).toBeInTheDocument()
         expect(screen.getByText('Approve action')).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Sessions' })).toBeInTheDocument()
+        expect(screen.getByTestId('runtime-provider')).toBeInTheDocument()
+        expect(screen.getByTestId('happy-thread')).toBeInTheDocument()
+        expect(screen.getByTestId('happy-composer')).toBeInTheDocument()
+
+        expect(happyThreadMock).toHaveBeenCalledWith(expect.objectContaining({
+            sessionId: 'conv-1',
+            hasMoreMessages: false,
+            pendingCount: 0,
+            rawMessagesCount: 1,
+            normalizedMessagesCount: 1,
+            messagesVersion: 7,
+            onLoadMore: loadMoreMock,
+        }))
+        expect(happyComposerMock).toHaveBeenCalledWith(expect.objectContaining({
+            disabled: false,
+            active: true,
+            thinking: false,
+            attachmentsEnabled: false,
+            enableAbort: false,
+        }))
+
+        expect(useHappyRuntime).toHaveBeenCalledWith(expect.objectContaining({
+            active: true,
+            isRunning: false,
+            isSending: false,
+            allowSendWhenInactive: false,
+            blocks: [expect.objectContaining({
+                kind: 'agent-text',
+                id: 'msg-1',
+                text: 'hello from openclaw'
+            })]
+        }))
     })
 
-    it('wires composer and approval actions to the OpenClaw hooks', async () => {
+    it('wires send and approval actions to the OpenClaw hooks', async () => {
         render(<OpenClawChatPage />)
 
-        fireEvent.change(screen.getByRole('textbox'), {
-            target: { value: '  hello from web  ' }
-        })
-        fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+        const runtimeArgs = vi.mocked(useHappyRuntime).mock.calls[0]?.[0]
+        expect(runtimeArgs).toBeDefined()
+
+        await runtimeArgs?.onSendMessage('hello from web')
 
         await waitFor(() => {
             expect(sendMessageMock).toHaveBeenCalledWith('conv-1', 'hello from web')
