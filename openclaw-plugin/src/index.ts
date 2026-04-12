@@ -5,7 +5,7 @@ import { MockOpenClawRuntime } from './openclawRuntime'
 import { createPluginApp } from './routes'
 
 const config = getPluginConfig()
-const callbackClient = new HapiCallbackClient(config.callbackBaseUrl, config.callbackSigningSecret)
+const callbackClient = new HapiCallbackClient(config.hapiBaseUrl, config.sharedSecret)
 const runtime = new MockOpenClawRuntime(config.namespace)
 const app = createPluginApp({
     sharedSecret: config.sharedSecret,

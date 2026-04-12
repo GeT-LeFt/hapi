@@ -8,9 +8,8 @@ export type PluginCommandAck = {
 export type PluginConfig = {
     listenHost: string
     listenPort: number
-    sharedSecret: string | null
-    callbackBaseUrl: string | null
-    callbackSigningSecret: string | null
+    sharedSecret: string
+    hapiBaseUrl: string
     namespace: string
 }
 

@@ -3,20 +3,16 @@ import { signCallbackBody } from './signing'
 
 export class HapiCallbackClient {
     constructor(
-        private readonly callbackBaseUrl: string | null,
-        private readonly callbackSigningSecret: string | null
+        private readonly hapiBaseUrl: string,
+        private readonly sharedSecret: string
     ) {}
 
     async postEvent(event: HapiCallbackEvent): Promise<void> {
-        if (!this.callbackBaseUrl || !this.callbackSigningSecret) {
-            return
-        }
-
         const rawBody = JSON.stringify(event)
         const timestamp = Date.now()
-        const signature = signCallbackBody(timestamp, rawBody, this.callbackSigningSecret)
+        const signature = signCallbackBody(timestamp, rawBody, this.sharedSecret)
 
-        const response = await fetch(new URL('/api/openclaw/channel/events', this.callbackBaseUrl).toString(), {
+        const response = await fetch(new URL('/api/openclaw/channel/events', this.hapiBaseUrl).toString(), {
             method: 'POST',
             headers: {
                 'content-type': 'application/json',

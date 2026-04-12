@@ -7,7 +7,7 @@ class StubCallbackClient extends HapiCallbackClient {
     events: unknown[] = []
 
     constructor() {
-        super(null, null)
+        super('http://127.0.0.1:3006', 'shared-secret')
     }
 
     override async postEvent(event: unknown): Promise<void> {
@@ -32,6 +32,12 @@ describe('openclaw plugin routes', () => {
         const { app } = createApp()
         const response = await app.request('/hapi/channel/messages', { method: 'POST' })
         expect(response.status).toBe(401)
+    })
+
+    it('does not expose the legacy non-/hapi routes', async () => {
+        const { app } = createApp()
+        const response = await app.request('/channel/messages', { method: 'POST' })
+        expect(response.status).toBe(404)
     })
 
     it('returns idempotent acknowledgements for repeated send-message calls', async () => {

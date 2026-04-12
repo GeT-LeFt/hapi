@@ -43,12 +43,10 @@ See `src/configuration.ts` for all options.
 - `HAPI_RELAY_FORCE_TCP` - Force TCP relay mode (true/1).
 - `VAPID_SUBJECT` - Contact email/URL for Web Push.
 - `OPENCLAW_TRANSPORT_MODE` - OpenClaw transport mode: `fake` or `official` (default: `fake`).
-- `OPENCLAW_API_BASE_URL` - Base URL for official OpenClaw channel API requests when `OPENCLAW_TRANSPORT_MODE=official`.
-- `OPENCLAW_API_KEY` - Bearer token used for official OpenClaw outbound requests.
-- `OPENCLAW_CHANNEL_SIGNING_SECRET` - HMAC secret used to verify signed inbound OpenClaw channel events.
+- `OPENCLAW_PLUGIN_BASE_URL` - Base URL for official OpenClaw plugin requests when `OPENCLAW_TRANSPORT_MODE=official`.
+- `OPENCLAW_SHARED_SECRET` - Shared secret used for both HAPI -> plugin bearer auth and plugin -> HAPI callback signature verification.
 - `OPENCLAW_CHANNEL_TIMEOUT_MS` - Timeout for outbound OpenClaw HTTP requests (default: `30000`).
 - `OPENCLAW_CHANNEL_ALLOWED_SKEW_MS` - Allowed timestamp skew for signed inbound OpenClaw events (default: `300000`).
-- `OPENCLAW_CHANNEL_TOKEN` - Legacy development-only shared secret for unsigned `POST /api/openclaw/channel/events` ingress via `x-openclaw-token`.
 
 ## Running
 
@@ -139,7 +137,7 @@ See `src/web/routes/` for all endpoints.
 - `GET /api/openclaw/state` - Get connection state and pending approvals for a conversation.
 - `POST /api/openclaw/approvals/:requestId/approve` - Approve an OpenClaw approval request.
 - `POST /api/openclaw/approvals/:requestId/deny` - Deny an OpenClaw approval request.
-- `POST /api/openclaw/channel/events` - Ingest inbound OpenClaw channel events; verifies signed requests when `OPENCLAW_CHANNEL_SIGNING_SECRET` is set, otherwise falls back to the legacy `x-openclaw-token` gate via `OPENCLAW_CHANNEL_TOKEN`.
+- `POST /api/openclaw/channel/events` - Ingest inbound OpenClaw channel events; requires `x-openclaw-timestamp` and `x-openclaw-signature`, verified with `OPENCLAW_SHARED_SECRET`.
 
 ### Voice (`src/web/routes/voice.ts`)
 
@@ -220,7 +218,7 @@ See `src/sync/syncEngine.ts` for the main session/message manager:
 
 OpenClaw chat is a parallel domain, not part of `SyncEngine`. Its hub-side logic lives in `src/openclaw/`, with SQLite persistence in `src/store/openclaw*.ts` and SSE fan-out through `src/sse/sseManager.ts`.
 
-Current transport note: `src/openclaw/client.ts` now uses an asynchronous command-ack contract with durable command and receipt ledgers. `OPENCLAW_TRANSPORT_MODE=fake` remains the default for local development. `OPENCLAW_TRANSPORT_MODE=official` enables outbound HTTP calls plus signed inbound event verification, but final live protocol alignment still depends on testing against a real OpenClaw upstream.
+Current transport note: `src/openclaw/client.ts` now uses an asynchronous command-ack contract with durable command and receipt ledgers. `OPENCLAW_TRANSPORT_MODE=fake` remains the default for local development. `OPENCLAW_TRANSPORT_MODE=official` uses canonical `/hapi/channel/*` plugin routes plus a single `OPENCLAW_SHARED_SECRET` for outbound auth and inbound callback verification.
 
 ## Storage
 

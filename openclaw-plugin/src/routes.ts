@@ -5,17 +5,14 @@ import { MockOpenClawRuntime } from './openclawRuntime'
 import { HapiCallbackClient } from './hapiClient'
 
 type RouteDeps = {
-    sharedSecret: string | null
+    sharedSecret: string
     namespace: string
     callbackClient: HapiCallbackClient
     runtime: MockOpenClawRuntime
     idempotencyCache: Map<string, PluginCommandAck>
 }
 
-function isAuthorized(req: Request, sharedSecret: string | null): boolean {
-    if (!sharedSecret) {
-        return true
-    }
+function isAuthorized(req: Request, sharedSecret: string): boolean {
     const header = req.headers.get('authorization')?.trim()
     return header === `Bearer ${sharedSecret}`
 }
@@ -44,10 +41,8 @@ export function createPluginApp(deps: RouteDeps): Hono {
         return await next()
     }
 
-    app.get('/health', healthHandler)
     app.get('/hapi/health', healthHandler)
 
-    app.use('/channel/*', authMiddleware)
     app.use('/hapi/channel/*', authMiddleware)
 
     const ensureDefaultConversationHandler = async (c: Context) => {
@@ -169,16 +164,12 @@ export function createPluginApp(deps: RouteDeps): Hono {
         return c.json(ack)
     }
 
-    app.post('/channel/conversations/default', ensureDefaultConversationHandler)
     app.post('/hapi/channel/conversations/default', ensureDefaultConversationHandler)
 
-    app.post('/channel/messages', sendMessageHandler)
     app.post('/hapi/channel/messages', sendMessageHandler)
 
-    app.post('/channel/approvals/:requestId/approve', approveHandler)
     app.post('/hapi/channel/approvals/:requestId/approve', approveHandler)
 
-    app.post('/channel/approvals/:requestId/deny', denyHandler)
     app.post('/hapi/channel/approvals/:requestId/deny', denyHandler)
 
     return app

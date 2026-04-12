@@ -47,13 +47,12 @@ function createApp(store: Store, events: unknown[]) {
 }
 
 afterEach(() => {
-    delete process.env.OPENCLAW_CHANNEL_SIGNING_SECRET
-    delete process.env.OPENCLAW_CHANNEL_TOKEN
+    delete process.env.OPENCLAW_SHARED_SECRET
 })
 
 describe('openclaw ingress routes', () => {
     it('verifies signatures and ignores duplicate processed receipts', async () => {
-        process.env.OPENCLAW_CHANNEL_SIGNING_SECRET = 'test-secret'
+        process.env.OPENCLAW_SHARED_SECRET = 'test-secret'
 
         const store = new Store(':memory:')
         store.openclawConversations.getOrCreateConversation('default', 'default:1', {
@@ -105,7 +104,7 @@ describe('openclaw ingress routes', () => {
     })
 
     it('rejects invalid signatures', async () => {
-        process.env.OPENCLAW_CHANNEL_SIGNING_SECRET = 'test-secret'
+        process.env.OPENCLAW_SHARED_SECRET = 'test-secret'
 
         const store = new Store(':memory:')
         store.openclawConversations.getOrCreateConversation('default', 'default:1', {
@@ -136,5 +135,28 @@ describe('openclaw ingress routes', () => {
 
         expect(response.status).toBe(401)
         expect(store.openclawReceipts.getReceipt('default', 'evt-state-1')).toBeNull()
+    })
+
+    it('fails clearly when the shared secret is not configured', async () => {
+        const store = new Store(':memory:')
+        const app = createApp(store, [])
+
+        const response = await app.request('/api/openclaw/channel/events', {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: 'state',
+                eventId: 'evt-state-1',
+                occurredAt: Date.now(),
+                conversationId: 'upstream-conv-1',
+                connected: true,
+                thinking: false
+            })
+        })
+
+        expect(response.status).toBe(503)
+        expect(await response.json()).toEqual({ error: 'OpenClaw shared secret not configured' })
     })
 })

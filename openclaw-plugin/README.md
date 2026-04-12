@@ -16,9 +16,8 @@ Useful env vars:
 
 - `OPENCLAW_PLUGIN_LISTEN_HOST` default `127.0.0.1`
 - `OPENCLAW_PLUGIN_LISTEN_PORT` default `3016`
-- `OPENCLAW_PLUGIN_SHARED_SECRET` bearer token expected from HAPI
-- `HAPI_CALLBACK_BASE_URL` base URL for HAPI hub callbacks
-- `HAPI_CALLBACK_SIGNING_SECRET` HMAC secret used for callback signing
+- `OPENCLAW_SHARED_SECRET` shared secret used for HAPI bearer auth and callback signing
+- `HAPI_BASE_URL` base URL for HAPI hub callbacks
 - `OPENCLAW_PLUGIN_NAMESPACE` default `default`
 
 Run:
@@ -30,5 +29,5 @@ bun run dev
 
 Current compatibility note:
 
-- the mock plugin exposes both `/channel/*` and `/hapi/channel/*`
-- this is deliberate so it works with the current HAPI `official` client without extra patching
+- the mock plugin only exposes `/hapi/channel/*` and `/hapi/health`
+- HAPI official mode must point `OPENCLAW_PLUGIN_BASE_URL` at this service and use the same `OPENCLAW_SHARED_SECRET`

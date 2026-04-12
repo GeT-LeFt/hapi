@@ -73,7 +73,7 @@ class OfficialOpenClawClient implements OpenClawClient {
     constructor(private readonly config: OpenClawTransportConfig) {}
 
     async ensureDefaultConversation(input: { externalUserKey: string }): Promise<{ conversationId: string; title?: string | null }> {
-        const body = await this.requestJson('/channel/conversations/default', {
+        const body = await this.requestJson('/hapi/channel/conversations/default', {
             method: 'POST',
             body: JSON.stringify({
                 externalUserKey: input.externalUserKey
@@ -97,7 +97,7 @@ class OfficialOpenClawClient implements OpenClawClient {
         localMessageId: string
         idempotencyKey: string
     }): Promise<OpenClawCommandAck> {
-        const body = await this.requestJson('/channel/messages', {
+        const body = await this.requestJson('/hapi/channel/messages', {
             method: 'POST',
             headers: {
                 'idempotency-key': input.idempotencyKey
@@ -122,7 +122,7 @@ class OfficialOpenClawClient implements OpenClawClient {
         requestId: string
         idempotencyKey: string
     }): Promise<OpenClawCommandAck> {
-        const body = await this.requestJson(`/channel/approvals/${encodeURIComponent(input.requestId)}/approve`, {
+        const body = await this.requestJson(`/hapi/channel/approvals/${encodeURIComponent(input.requestId)}/approve`, {
             method: 'POST',
             headers: {
                 'idempotency-key': input.idempotencyKey
@@ -145,7 +145,7 @@ class OfficialOpenClawClient implements OpenClawClient {
         requestId: string
         idempotencyKey: string
     }): Promise<OpenClawCommandAck> {
-        const body = await this.requestJson(`/channel/approvals/${encodeURIComponent(input.requestId)}/deny`, {
+        const body = await this.requestJson(`/hapi/channel/approvals/${encodeURIComponent(input.requestId)}/deny`, {
             method: 'POST',
             headers: {
                 'idempotency-key': input.idempotencyKey
@@ -164,17 +164,17 @@ class OfficialOpenClawClient implements OpenClawClient {
     }
 
     private async requestJson(pathname: string, init: RequestInit): Promise<Record<string, unknown> | null> {
-        const baseUrl = this.config.apiBaseUrl
-        const apiKey = this.config.apiKey
-        if (!baseUrl || !apiKey) {
-            throw new Error('OpenClaw official transport is missing OPENCLAW_API_BASE_URL or OPENCLAW_API_KEY')
+        const baseUrl = this.config.pluginBaseUrl
+        const sharedSecret = this.config.sharedSecret
+        if (!baseUrl || !sharedSecret) {
+            throw new Error('OpenClaw official transport is missing OPENCLAW_PLUGIN_BASE_URL or OPENCLAW_SHARED_SECRET')
         }
 
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs)
         try {
             const headers = new Headers(init.headers)
-            headers.set('authorization', `Bearer ${apiKey}`)
+            headers.set('authorization', `Bearer ${sharedSecret}`)
             headers.set('content-type', 'application/json')
 
             const response = await fetch(new URL(pathname, baseUrl).toString(), {
