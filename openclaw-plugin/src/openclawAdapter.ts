@@ -16,6 +16,8 @@ const CONVERSATION_TITLE = 'OpenClaw'
 const RUN_COMPLETION_SETTLE_MS = 50
 const DEFAULT_PROVIDER = 'openai'
 const DEFAULT_MODEL = 'gpt-5.4'
+const STATE_CALLBACK_RETRY_ATTEMPTS = 3
+const STATE_CALLBACK_RETRY_BASE_DELAY_MS = 1000
 
 export class ConversationBusyError extends Error {
     constructor() {
@@ -132,7 +134,8 @@ export class RealOpenClawAdapter implements OpenClawAdapterRuntime {
         private readonly namespace: string,
         private readonly runtime: PluginRuntime,
         private readonly callbackClient: HapiCallbackClient,
-        private readonly logger: PluginLogger
+        private readonly logger: PluginLogger,
+        private readonly stateCallbackRetryBaseDelayMs: number = STATE_CALLBACK_RETRY_BASE_DELAY_MS
     ) {}
 
     async ensureDefaultConversation(externalUserKey: string): Promise<{ conversationId: string; title: string }> {
@@ -146,6 +149,31 @@ export class RealOpenClawAdapter implements OpenClawAdapterRuntime {
         return adapterState.isRunActive(conversationId)
     }
 
+    private async postStateWithRetry(input: {
+        namespace: string
+        conversationId: string
+        thinking: boolean
+        lastError: string | null
+    }): Promise<void> {
+        for (let attempt = 0; attempt < STATE_CALLBACK_RETRY_ATTEMPTS; attempt += 1) {
+            try {
+                await this.callbackClient.postEvent(createStateEvent(input))
+                return
+            } catch (error) {
+                if (attempt === STATE_CALLBACK_RETRY_ATTEMPTS - 1) {
+                    throw error
+                }
+
+                this.logger.warn(
+                    `[${input.namespace}] hapi-openclaw state callback retry `
+                    + `conversation=${input.conversationId} attempt=${attempt + 1}: `
+                    + (error instanceof Error ? error.message : String(error))
+                )
+                await delay(this.stateCallbackRetryBaseDelayMs * (attempt + 1))
+            }
+        }
+    }
+
     async sendMessage(action: PluginRuntimeSendMessageAction): Promise<void> {
         if (!adapterState.startRun(action.conversationId)) {
             throw new ConversationBusyError()
@@ -156,12 +184,12 @@ export class RealOpenClawAdapter implements OpenClawAdapterRuntime {
         this.logger.info(`[${namespace}] hapi-openclaw send-message start conversation=${action.conversationId}`)
 
         try {
-            await this.callbackClient.postEvent(createStateEvent({
+            await this.postStateWithRetry({
                 namespace,
                 conversationId: action.conversationId,
                 thinking: true,
                 lastError: null
-            }))
+            })
             initialStatePosted = true
 
             const config = this.runtime.config.loadConfig() as Record<string, unknown>
@@ -198,12 +226,12 @@ export class RealOpenClawAdapter implements OpenClawAdapterRuntime {
             if (runError) {
                 this.logger.warn(`[${namespace}] hapi-openclaw run failed conversation=${action.conversationId}: ${runError}`)
                 if (adapterState.finishRun(action.conversationId)) {
-                    await this.callbackClient.postEvent(createStateEvent({
+                    await this.postStateWithRetry({
                         namespace,
                         conversationId: action.conversationId,
                         thinking: false,
                         lastError: runError
-                    }))
+                    })
                 }
                 return
             }
@@ -218,24 +246,24 @@ export class RealOpenClawAdapter implements OpenClawAdapterRuntime {
             }
 
             if (adapterState.finishRun(action.conversationId)) {
-                await this.callbackClient.postEvent(createStateEvent({
+                await this.postStateWithRetry({
                     namespace,
                     conversationId: action.conversationId,
                     thinking: false,
                     lastError: null
-                }))
+                })
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'OpenClaw embedded run failed'
             this.logger.error(`[${namespace}] hapi-openclaw send-message error conversation=${action.conversationId}: ${message}`)
 
             if (adapterState.finishRun(action.conversationId) && initialStatePosted) {
-                await this.callbackClient.postEvent(createStateEvent({
+                await this.postStateWithRetry({
                     namespace,
                     conversationId: action.conversationId,
                     thinking: false,
                     lastError: message
-                }))
+                })
             }
 
             throw error

@@ -587,14 +587,17 @@ export function useSSE(options: {
 
             if (event.type === 'openclaw-state') {
                 applyOpenClawStateUpdate(event)
+                void queryClient.invalidateQueries({ queryKey: queryKeys.openclawState(event.conversationId) })
             }
 
             if (event.type === 'openclaw-approval-request') {
                 applyOpenClawApprovalRequestUpdate(event)
+                void queryClient.invalidateQueries({ queryKey: queryKeys.openclawState(event.conversationId) })
             }
 
             if (event.type === 'openclaw-approval-resolved') {
                 applyOpenClawApprovalResolvedUpdate(event)
+                void queryClient.invalidateQueries({ queryKey: queryKeys.openclawState(event.conversationId) })
             }
 
             onEventRef.current(event)
