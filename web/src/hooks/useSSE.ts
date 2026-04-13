@@ -12,6 +12,13 @@ import type {
 } from '@/types/api'
 import { queryKeys } from '@/lib/query-keys'
 import { clearMessageWindow, ingestIncomingMessages } from '@/lib/message-window-store'
+import {
+    applyOpenClawApprovalRequestEvent,
+    applyOpenClawApprovalResolvedEvent,
+    applyOpenClawMessageEvent,
+    applyOpenClawStateEvent
+} from '@/lib/openclawSseCache'
+import type { OpenClawMessagesResponse, OpenClawStateResponse } from '@/types/api'
 
 type SSESubscription = {
     all?: boolean
@@ -355,10 +362,32 @@ export function useSSE(options: {
             scheduleInvalidationFlush()
         }
 
-        const queueOpenClawInvalidation = (conversationId: string) => {
-            void queryClient.invalidateQueries({ queryKey: queryKeys.openclawMessages(conversationId) })
-            void queryClient.invalidateQueries({ queryKey: queryKeys.openclawState(conversationId) })
-            void queryClient.invalidateQueries({ queryKey: queryKeys.openclawConversation })
+        const applyOpenClawMessageUpdate = (event: Extract<SyncEvent, { type: 'openclaw-message' }>) => {
+            queryClient.setQueryData<OpenClawMessagesResponse | undefined>(
+                queryKeys.openclawMessages(event.conversationId),
+                (previous) => applyOpenClawMessageEvent(previous, event.message)
+            )
+        }
+
+        const applyOpenClawStateUpdate = (event: Extract<SyncEvent, { type: 'openclaw-state' }>) => {
+            queryClient.setQueryData<OpenClawStateResponse | undefined>(
+                queryKeys.openclawState(event.conversationId),
+                (previous) => applyOpenClawStateEvent(previous, event.state)
+            )
+        }
+
+        const applyOpenClawApprovalRequestUpdate = (event: Extract<SyncEvent, { type: 'openclaw-approval-request' }>) => {
+            queryClient.setQueryData<OpenClawStateResponse | undefined>(
+                queryKeys.openclawState(event.conversationId),
+                (previous) => applyOpenClawApprovalRequestEvent(previous, event.request)
+            )
+        }
+
+        const applyOpenClawApprovalResolvedUpdate = (event: Extract<SyncEvent, { type: 'openclaw-approval-resolved' }>) => {
+            queryClient.setQueryData<OpenClawStateResponse | undefined>(
+                queryKeys.openclawState(event.conversationId),
+                (previous) => applyOpenClawApprovalResolvedEvent(previous, event.requestId, event.status)
+            )
         }
 
         const upsertSessionSummary = (session: Session) => {
@@ -552,13 +581,20 @@ export function useSSE(options: {
                 }
             }
 
-            if (
-                event.type === 'openclaw-message'
-                || event.type === 'openclaw-state'
-                || event.type === 'openclaw-approval-request'
-                || event.type === 'openclaw-approval-resolved'
-            ) {
-                queueOpenClawInvalidation(event.conversationId)
+            if (event.type === 'openclaw-message') {
+                applyOpenClawMessageUpdate(event)
+            }
+
+            if (event.type === 'openclaw-state') {
+                applyOpenClawStateUpdate(event)
+            }
+
+            if (event.type === 'openclaw-approval-request') {
+                applyOpenClawApprovalRequestUpdate(event)
+            }
+
+            if (event.type === 'openclaw-approval-resolved') {
+                applyOpenClawApprovalResolvedUpdate(event)
             }
 
             onEventRef.current(event)
