@@ -51,21 +51,24 @@ export function createOpenClawIngressRoutes(
             return c.json({ error: error instanceof Error ? error.message : 'Invalid body' }, 400)
         }
 
-        const existingReceipt = store.openclawReceipts.getReceipt(event.namespace, event.eventId)
-        if (existingReceipt?.processedAt) {
-            return c.json({ ok: true, duplicate: true })
-        }
-
-        store.openclawReceipts.recordReceipt({
+        const claim = store.openclawReceipts.claim({
             namespace: event.namespace,
             eventId: event.eventId,
             upstreamConversationId: event.conversationId,
             eventType: event.type
         })
+        if (!claim.acquired) {
+            return c.json({ ok: true, duplicate: true })
+        }
 
-        await service.ingestInboundEvent(event)
-        store.openclawReceipts.markProcessed(event.namespace, event.eventId)
-        return c.json({ ok: true })
+        try {
+            await service.ingestInboundEvent(event)
+            store.openclawReceipts.markProcessed(event.namespace, event.eventId)
+            return c.json({ ok: true })
+        } catch (error) {
+            store.openclawReceipts.release(event.namespace, event.eventId)
+            throw error
+        }
     })
 
     return app

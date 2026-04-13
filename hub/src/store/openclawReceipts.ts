@@ -66,6 +66,41 @@ export function recordOpenClawReceipt(
     return stored
 }
 
+export function claimOpenClawReceipt(
+    db: Database,
+    input: {
+        namespace: string
+        eventId: string
+        upstreamConversationId?: string | null
+        eventType: string
+    }
+): { acquired: boolean; receipt: StoredOpenClawReceipt } {
+    const now = Date.now()
+    const result = db.prepare(`
+        INSERT OR IGNORE INTO openclaw_receipts (
+            namespace, event_id, upstream_conversation_id, event_type, first_seen_at, processed_at
+        ) VALUES (
+            @namespace, @event_id, @upstream_conversation_id, @event_type, @first_seen_at, NULL
+        )
+    `).run({
+        namespace: input.namespace,
+        event_id: input.eventId,
+        upstream_conversation_id: input.upstreamConversationId ?? null,
+        event_type: input.eventType,
+        first_seen_at: now
+    })
+
+    const stored = getOpenClawReceipt(db, input.namespace, input.eventId)
+    if (!stored) {
+        throw new Error('Failed to claim OpenClaw receipt')
+    }
+
+    return {
+        acquired: result.changes > 0,
+        receipt: stored
+    }
+}
+
 export function markOpenClawReceiptProcessed(
     db: Database,
     namespace: string,
@@ -83,4 +118,22 @@ export function markOpenClawReceiptProcessed(
     })
 
     return getOpenClawReceipt(db, namespace, eventId)
+}
+
+export function releaseOpenClawReceipt(
+    db: Database,
+    namespace: string,
+    eventId: string
+): boolean {
+    const result = db.prepare(`
+        DELETE FROM openclaw_receipts
+        WHERE namespace = @namespace
+          AND event_id = @event_id
+          AND processed_at IS NULL
+    `).run({
+        namespace,
+        event_id: eventId
+    })
+
+    return result.changes > 0
 }

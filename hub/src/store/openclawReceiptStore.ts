@@ -2,9 +2,11 @@ import type { Database } from 'bun:sqlite'
 
 import type { StoredOpenClawReceipt } from './types'
 import {
+    claimOpenClawReceipt,
     getOpenClawReceipt,
     markOpenClawReceiptProcessed,
-    recordOpenClawReceipt
+    recordOpenClawReceipt,
+    releaseOpenClawReceipt
 } from './openclawReceipts'
 
 export class OpenClawReceiptStore {
@@ -32,7 +34,20 @@ export class OpenClawReceiptStore {
         return recordOpenClawReceipt(this.db, input)
     }
 
+    claim(input: {
+        namespace: string
+        eventId: string
+        upstreamConversationId?: string | null
+        eventType: string
+    }): { acquired: boolean; receipt: StoredOpenClawReceipt } {
+        return claimOpenClawReceipt(this.db, input)
+    }
+
     markProcessed(namespace: string, eventId: string): StoredOpenClawReceipt | null {
         return markOpenClawReceiptProcessed(this.db, namespace, eventId)
+    }
+
+    release(namespace: string, eventId: string): boolean {
+        return releaseOpenClawReceipt(this.db, namespace, eventId)
     }
 }

@@ -220,4 +220,35 @@ describe('OpenClaw store', () => {
         expect(processed?.processedAt).not.toBeNull()
         expect(store.openclawReceipts.hasProcessedReceipt('default', 'evt-1')).toBe(true)
     })
+
+    it('claims receipts once and allows release before processing', () => {
+        const store = new Store(':memory:')
+
+        const firstClaim = store.openclawReceipts.claim({
+            namespace: 'default',
+            eventId: 'evt-claim-1',
+            upstreamConversationId: 'upstream-conv-1',
+            eventType: 'message'
+        })
+        const secondClaim = store.openclawReceipts.claim({
+            namespace: 'default',
+            eventId: 'evt-claim-1',
+            upstreamConversationId: 'upstream-conv-1',
+            eventType: 'message'
+        })
+
+        expect(firstClaim.acquired).toBe(true)
+        expect(secondClaim.acquired).toBe(false)
+        expect(store.openclawReceipts.release('default', 'evt-claim-1')).toBe(true)
+        expect(store.openclawReceipts.getReceipt('default', 'evt-claim-1')).toBeNull()
+
+        const thirdClaim = store.openclawReceipts.claim({
+            namespace: 'default',
+            eventId: 'evt-claim-1',
+            upstreamConversationId: 'upstream-conv-1',
+            eventType: 'message'
+        })
+
+        expect(thirdClaim.acquired).toBe(true)
+    })
 })
