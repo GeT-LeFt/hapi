@@ -71,6 +71,12 @@ function buildFilteredEnv(): NodeJS.ProcessEnv {
     if (!env.TERM) {
         env.TERM = 'xterm-256color'
     }
+    if (!env.COLORTERM) {
+        env.COLORTERM = 'truecolor'
+    }
+    if (!env.LANG) {
+        env.LANG = 'en_US.UTF-8'
+    }
     return env
 }
 
