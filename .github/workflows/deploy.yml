@@ -131,8 +131,10 @@ jobs:
             docker stop hapi 2>/dev/null || true
             docker rm hapi 2>/dev/null || true
 
-            systemctl stop hapi.service 2>/dev/null || true
-            systemctl disable hapi.service 2>/dev/null || true
+            systemctl stop hapi.service hapi-hub.service 2>/dev/null || true
+            systemctl disable hapi.service hapi-hub.service 2>/dev/null || true
+            pkill -f '/usr/bin/hapi hub' 2>/dev/null || true
+            sleep 2
 
             docker run -d \
               --name hapi \
