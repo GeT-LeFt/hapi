@@ -1,0 +1,156 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches: [main, dev]
+
+env:
+  IMAGE_NAME: getleft/hapi
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.5'
+      - run: bun install
+      - run: bun run typecheck
+
+  docker-build-push:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push Docker image
+        run: |
+          IMAGE=${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}
+          SHA=$(echo "${{ github.sha }}" | head -c 7)
+
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            LATEST_TAG="latest"
+          else
+            LATEST_TAG="latest-staging"
+          fi
+
+          docker build \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -t "$IMAGE:$LATEST_TAG" \
+            -t "$IMAGE:$SHA" \
+            .
+
+          docker push "$IMAGE:$LATEST_TAG"
+          docker push "$IMAGE:$SHA"
+
+  deploy-staging:
+    if: github.ref_name == 'dev'
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - name: Deploy staging to ECS via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          script: |
+            set -e
+
+            IMAGE=${{ secrets.ACR_REGISTRY }}/getleft/hapi:latest-staging
+
+            docker login \
+              --username "${{ secrets.ACR_USERNAME }}" \
+              --password "${{ secrets.ACR_PASSWORD }}" \
+              "${{ secrets.ACR_REGISTRY }}"
+
+            docker pull "$IMAGE"
+
+            docker stop hapi-staging 2>/dev/null || true
+            docker rm hapi-staging 2>/dev/null || true
+
+            docker run -d \
+              --name hapi-staging \
+              --restart unless-stopped \
+              --network host \
+              -v /root/.hapi-staging:/root/.hapi \
+              --env-file /opt/hapi/.env.staging \
+              "$IMAGE"
+
+            echo "Waiting for HAPI staging to start..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3007/health > /dev/null 2>&1; then
+                echo "HAPI staging is healthy!"
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "Staging health check failed after 60s"
+            docker logs hapi-staging --tail 50
+            exit 1
+
+  deploy-production:
+    if: github.ref_name == 'main'
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Deploy production to ECS via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          script: |
+            set -e
+
+            IMAGE=${{ secrets.ACR_REGISTRY }}/getleft/hapi:latest
+
+            docker login \
+              --username "${{ secrets.ACR_USERNAME }}" \
+              --password "${{ secrets.ACR_PASSWORD }}" \
+              "${{ secrets.ACR_REGISTRY }}"
+
+            docker pull "$IMAGE"
+
+            docker stop hapi 2>/dev/null || true
+            docker rm hapi 2>/dev/null || true
+
+            systemctl stop hapi.service 2>/dev/null || true
+            systemctl disable hapi.service 2>/dev/null || true
+
+            docker run -d \
+              --name hapi \
+              --restart unless-stopped \
+              --network host \
+              -v /root/.hapi:/root/.hapi \
+              --env-file /opt/hapi/.env \
+              "$IMAGE"
+
+            echo "Waiting for HAPI to start..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3006/health > /dev/null 2>&1; then
+                echo "HAPI is healthy!"
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "Health check failed after 60s"
+            docker logs hapi --tail 50
+            exit 1
