@@ -12,6 +12,7 @@ import { logger } from '@/ui/logger'
 import { runtimePath } from '@/projectPath'
 import { getInvokedCwd } from '@/utils/invokedCwd'
 import { readWorktreeEnv } from '@/utils/worktreeEnv'
+import { discoverApiProfiles } from '@/utils/apiProfiles'
 import packageJson from '../../package.json'
 
 export type SessionStartedBy = 'runner' | 'terminal'
@@ -45,7 +46,8 @@ export function buildMachineMetadata(): MachineMetadata {
         happyCliVersion: packageJson.version,
         homeDir: os.homedir(),
         happyHomeDir: configuration.happyHomeDir,
-        happyLibDir: runtimePath()
+        happyLibDir: runtimePath(),
+        apiProfiles: discoverApiProfiles()
     }
 }
 

@@ -2,6 +2,7 @@ import type { AgentType } from './types'
 
 const AGENT_STORAGE_KEY = 'hapi:newSession:agent'
 const YOLO_STORAGE_KEY = 'hapi:newSession:yolo'
+const API_PROFILE_STORAGE_KEY = 'hapi:newSession:apiProfile'
 
 const VALID_AGENTS: AgentType[] = ['claude', 'codex', 'cursor', 'gemini', 'opencode']
 
@@ -36,6 +37,22 @@ export function loadPreferredYoloMode(): boolean {
 export function savePreferredYoloMode(enabled: boolean): void {
     try {
         localStorage.setItem(YOLO_STORAGE_KEY, enabled ? 'true' : 'false')
+    } catch {
+        // Ignore storage errors
+    }
+}
+
+export function loadPreferredApiProfile(): string {
+    try {
+        return localStorage.getItem(API_PROFILE_STORAGE_KEY) ?? 'default'
+    } catch {
+        return 'default'
+    }
+}
+
+export function savePreferredApiProfile(profile: string): void {
+    try {
+        localStorage.setItem(API_PROFILE_STORAGE_KEY, profile)
     } catch {
         // Ignore storage errors
     }

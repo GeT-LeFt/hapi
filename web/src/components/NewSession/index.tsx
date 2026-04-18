@@ -20,11 +20,14 @@ import { ReasoningEffortSelector } from './ReasoningEffortSelector'
 import {
     loadPreferredAgent,
     loadPreferredYoloMode,
+    loadPreferredApiProfile,
     savePreferredAgent,
     savePreferredYoloMode,
+    savePreferredApiProfile,
 } from './preferences'
 import { SessionTypeSelector } from './SessionTypeSelector'
 import { YoloToggle } from './YoloToggle'
+import { ApiProfileSelector } from './ApiProfileSelector'
 import { formatRunnerSpawnError } from '../../utils/formatRunnerSpawnError'
 
 export function NewSession(props: {
@@ -50,6 +53,7 @@ export function NewSession(props: {
     const [effort, setEffort] = useState<ClaudeEffort>('auto')
     const [modelReasoningEffort, setModelReasoningEffort] = useState<CodexReasoningEffort>('default')
     const [yoloMode, setYoloMode] = useState(loadPreferredYoloMode)
+    const [apiProfile, setApiProfile] = useState(loadPreferredApiProfile)
     const [sessionType, setSessionType] = useState<SessionType>('simple')
     const [worktreeName, setWorktreeName] = useState('')
     const [directoryCreationConfirmed, setDirectoryCreationConfirmed] = useState(false)
@@ -74,6 +78,10 @@ export function NewSession(props: {
     useEffect(() => {
         savePreferredYoloMode(yoloMode)
     }, [yoloMode])
+
+    useEffect(() => {
+        savePreferredApiProfile(apiProfile)
+    }, [apiProfile])
 
     useEffect(() => {
         if (props.machines.length === 0) return
@@ -260,7 +268,8 @@ export function NewSession(props: {
                 modelReasoningEffort: resolvedModelReasoningEffort,
                 yolo: yoloMode,
                 sessionType,
-                worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined
+                worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
+                apiProfile: apiProfile !== 'default' ? apiProfile : undefined
             })
 
             if (result.type === 'success') {
@@ -322,6 +331,12 @@ export function NewSession(props: {
                 agent={agent}
                 isDisabled={isFormDisabled}
                 onAgentChange={setAgent}
+            />
+            <ApiProfileSelector
+                machine={selectedMachine}
+                apiProfile={apiProfile}
+                isDisabled={isFormDisabled}
+                onApiProfileChange={setApiProfile}
             />
             <ModelSelector
                 agent={agent}

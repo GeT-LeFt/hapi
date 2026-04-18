@@ -20,6 +20,7 @@ import { isRetryableConnectionError } from '@/utils/errorUtils';
 import { cleanupRunnerState, getInstalledCliMtimeMs, isRunnerRunningCurrentlyInstalledHappyVersion, stopRunner } from './controlClient';
 import { startRunnerControlServer } from './controlServer';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
+import { resolveProfileEnvVars } from '@/utils/apiProfiles';
 import { join } from 'path';
 import { buildMachineMetadata } from '@/agent/sessionFactory';
 import { hashRunnerCliApiToken } from './runnerIdentity';
@@ -337,6 +338,13 @@ export async function startRunner(): Promise<void> {
             HAPI_WORKTREE_NAME: worktreeInfo.name,
             HAPI_WORKTREE_PATH: worktreeInfo.worktreePath,
             HAPI_WORKTREE_CREATED_AT: String(worktreeInfo.createdAt)
+          };
+        }
+
+        if (options.apiProfile && options.apiProfile !== 'default') {
+          extraEnv = {
+            ...extraEnv,
+            ...resolveProfileEnvVars(options.apiProfile)
           };
         }
 
