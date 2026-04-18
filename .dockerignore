@@ -22,8 +22,12 @@ coverage/
 .idea/
 .vscode/
 
-website/
-docs/
+website/src/
+website/public/
+website/node_modules/
+docs/src/
+docs/.vitepress/
+docs/node_modules/
 localdocs/
 execplan/
 .ace-tool/

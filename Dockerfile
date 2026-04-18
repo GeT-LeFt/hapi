@@ -8,6 +8,8 @@ COPY shared/package.json shared/
 COPY cli/package.json cli/
 COPY hub/package.json hub/
 COPY web/package.json web/
+COPY website/package.json website/
+COPY docs/package.json docs/
 
 RUN bun install --frozen-lockfile
 
