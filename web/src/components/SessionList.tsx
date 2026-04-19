@@ -399,7 +399,7 @@ function SessionItem(props: {
                     <div className="flex items-center gap-2 min-w-0">
                         <FlavorIcon flavor={s.metadata?.flavor} className="h-4 w-4 shrink-0" />
                         {isUnread ? (
-                            <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                            <span className="h-2 w-2 rounded-full bg-[var(--app-link)] shrink-0" />
                         ) : null}
                         <div className={`truncate text-sm font-medium ${s.active ? 'text-[var(--app-fg)]' : 'text-[var(--app-hint)]'}`}>
                             {sessionName}
