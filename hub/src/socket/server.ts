@@ -63,6 +63,7 @@ export function createSocketServer(deps: SocketServerDeps): {
     const engine = new Engine({
         path: '/socket.io/',
         cors: corsOptions,
+        maxHttpBufferSize: 100 * 1024 * 1024,
         allowRequest: async (req) => {
             const origin = req.headers.get('origin')
             if (!origin || allowAllOrigins || corsOrigins.includes(origin)) {
