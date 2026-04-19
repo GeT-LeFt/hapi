@@ -26,7 +26,10 @@ import { ReconnectingBanner } from '@/components/ReconnectingBanner'
 import { VoiceErrorBanner } from '@/components/VoiceErrorBanner'
 import { LoadingState } from '@/components/LoadingState'
 import { ToastContainer } from '@/components/ToastContainer'
+import { NotificationCenter } from '@/components/NotificationCenter'
 import { ToastProvider, useToast } from '@/lib/toast-context'
+import { UnreadProvider, useUnread } from '@/lib/unread-context'
+import { NotificationProvider, useNotification } from '@/lib/notification-context'
 import type { SyncEvent } from '@/types/api'
 
 type ToastEvent = Extract<SyncEvent, { type: 'toast' }>
@@ -36,7 +39,11 @@ const REQUIRE_SERVER_URL = requireHubUrlForLogin()
 export function App() {
     return (
         <ToastProvider>
-            <AppInner />
+            <UnreadProvider>
+                <NotificationProvider>
+                    <AppInner />
+                </NotificationProvider>
+            </UnreadProvider>
         </ToastProvider>
     )
 }
@@ -51,6 +58,8 @@ function AppInner() {
     const matchRoute = useMatchRoute()
     const router = useRouter()
     const { addToast } = useToast()
+    const { markUnread } = useUnread()
+    const { addNotification } = useNotification()
 
     useEffect(() => {
         const tg = getTelegramWebApp()
@@ -231,13 +240,26 @@ function AppInner() {
 
     const handleSseEvent = useCallback(() => {}, [])
     const handleToast = useCallback((event: ToastEvent) => {
-        addToast({
+        const data = {
             title: event.data.title,
             body: event.data.body,
             sessionId: event.data.sessionId,
             url: event.data.url
-        })
-    }, [addToast])
+        }
+        addToast(data)
+        addNotification(data)
+    }, [addToast, addNotification])
+
+    const selectedSessionIdRef = useRef(selectedSessionId)
+    useEffect(() => {
+        selectedSessionIdRef.current = selectedSessionId
+    }, [selectedSessionId])
+
+    const handleThinkingDone = useCallback((sessionId: string) => {
+        if (sessionId !== selectedSessionIdRef.current) {
+            markUnread(sessionId)
+        }
+    }, [markUnread])
 
     const eventSubscription = useMemo(() => {
         if (selectedSessionId) {
@@ -254,7 +276,8 @@ function AppInner() {
         onConnect: handleSseConnect,
         onDisconnect: handleSseDisconnect,
         onEvent: handleSseEvent,
-        onToast: handleToast
+        onToast: handleToast,
+        onThinkingDone: handleThinkingDone
     })
 
     useVisibilityReporter({
@@ -355,6 +378,7 @@ function AppInner() {
                     <Outlet />
                 </div>
                 <ToastContainer />
+                <NotificationCenter />
                 <InstallPrompt />
             </VoiceProvider>
         </AppContextProvider>
