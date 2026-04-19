@@ -75,7 +75,7 @@ function buildFilteredEnv(): NodeJS.ProcessEnv {
         env.COLORTERM = 'truecolor'
     }
     if (!env.LANG) {
-        env.LANG = 'en_US.UTF-8'
+        env.LANG = process.platform === 'darwin' ? 'en_US.UTF-8' : 'C.UTF-8'
     }
     return env
 }
