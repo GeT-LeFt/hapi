@@ -29,6 +29,7 @@ import { useSessionActions } from '@/hooks/mutations/useSessionActions'
 import { useVoiceOptional } from '@/lib/voice-context'
 import { RealtimeVoiceSession, registerSessionStore, registerVoiceHooksStore, voiceHooks } from '@/realtime'
 import { isRemoteTerminalSupported } from '@/utils/terminalSupport'
+import { StickyTodoList } from '@/components/AssistantChat/StickyTodoList'
 
 export function SessionChat(props: {
     api: ApiClient
@@ -386,6 +387,8 @@ export function SessionChat(props: {
                         messagesVersion={props.messagesVersion}
                         forceScrollToken={forceScrollToken}
                     />
+
+                    <StickyTodoList todos={props.session.todos} />
 
                     <HappyComposer
                         key={props.session.id}
