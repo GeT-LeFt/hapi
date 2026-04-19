@@ -30,12 +30,12 @@ function extractTextFromContentBlock(block: unknown): string | null {
     return null
 }
 
-interface ImageBlock {
+export interface ImageBlock {
     mediaType: string
     dataUrl: string
 }
 
-function extractImageFromContentBlock(block: unknown): ImageBlock | null {
+export function extractImageFromContentBlock(block: unknown): ImageBlock | null {
     if (!isObject(block)) return null
     if (block.type !== 'image') return null
     const source = isObject(block.source) ? block.source : null
@@ -46,7 +46,7 @@ function extractImageFromContentBlock(block: unknown): ImageBlock | null {
     return null
 }
 
-function extractImagesFromResult(result: unknown): ImageBlock[] {
+export function extractImagesFromResult(result: unknown): ImageBlock[] {
     if (!result) return []
 
     if (Array.isArray(result)) {
