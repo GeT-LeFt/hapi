@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "hapi",
+      "dependencies": {
+        "react-markdown": "^10.1.0",
+      },
       "devDependencies": {
         "concurrently": "^9.2.1",
         "react-devtools-core": "^7.0.1",
