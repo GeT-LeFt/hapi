@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 export type UnreadContextValue = {
     unreadSessionIds: Set<string>
@@ -9,8 +9,30 @@ export type UnreadContextValue = {
 
 const UnreadContext = createContext<UnreadContextValue | null>(null)
 
+const STORAGE_KEY = 'hapi_unread_sessions'
+
+function loadUnreadIds(): Set<string> {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (!raw) return new Set()
+        return new Set(JSON.parse(raw) as string[])
+    } catch {
+        return new Set()
+    }
+}
+
+function saveUnreadIds(ids: Set<string>): void {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]))
+    } catch { /* quota exceeded — silently ignore */ }
+}
+
 export function UnreadProvider({ children }: { children: ReactNode }) {
-    const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(new Set())
+    const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(loadUnreadIds)
+
+    useEffect(() => {
+        saveUnreadIds(unreadSessionIds)
+    }, [unreadSessionIds])
 
     const markUnread = useCallback((sessionId: string) => {
         setUnreadSessionIds((prev) => {
