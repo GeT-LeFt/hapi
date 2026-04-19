@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 export type Notification = {
     id: string
@@ -21,6 +21,28 @@ export type NotificationContextValue = {
 
 const NotificationContext = createContext<NotificationContextValue | null>(null)
 
+const STORAGE_KEY = 'hapi_notifications'
+const MAX_PERSISTED = 50
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+function loadNotifications(): Notification[] {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (!raw) return []
+        const parsed = JSON.parse(raw) as Notification[]
+        const cutoff = Date.now() - MAX_AGE_MS
+        return parsed.filter((n) => n.timestamp > cutoff)
+    } catch {
+        return []
+    }
+}
+
+function saveNotifications(notifications: Notification[]): void {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications.slice(0, MAX_PERSISTED)))
+    } catch { /* quota exceeded — silently ignore */ }
+}
+
 function createNotificationId(): string {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
         return crypto.randomUUID()
@@ -29,7 +51,11 @@ function createNotificationId(): string {
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-    const [notifications, setNotifications] = useState<Notification[]>([])
+    const [notifications, setNotifications] = useState<Notification[]>(loadNotifications)
+
+    useEffect(() => {
+        saveNotifications(notifications)
+    }, [notifications])
 
     const unreadCount = useMemo(
         () => notifications.filter((n) => !n.read).length,
