@@ -168,7 +168,7 @@ body {
 /* Widen content area on large screens; track sidebar width so content responds to drag */
 @media (min-width: 1280px) {
     :root {
-        --content-max-w: min(calc(100vw - var(--sidebar-w, 0px) - 4px), 1200px);
+        --content-max-w: calc((100vw - var(--sidebar-w, 0px) - 4px) * 0.9);
     }
 }
 
