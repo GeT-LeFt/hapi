@@ -290,4 +290,8 @@ export default {
   'misc.permissionRequired': 'permission required',
   'misc.percentLeft': '{percent}% left',
   'misc.online': 'online',
+
+  'notifications.title': 'Notifications',
+  'notifications.clearAll': 'Clear all',
+  'notifications.empty': 'No notifications',
 } as const

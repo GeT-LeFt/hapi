@@ -52,7 +52,7 @@ function NotificationItem({ notification, onNavigate }: { notification: Notifica
 export function NotificationCenter() {
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const { notifications, unreadCount, markAllRead, clearAll } = useNotification()
+    const { notifications, unreadCount, markAllRead, removeNotification, clearAll } = useNotification()
     const [open, setOpen] = useState(false)
     const panelRef = useRef<HTMLDivElement>(null)
     const buttonRef = useRef<HTMLButtonElement>(null)
@@ -68,6 +68,7 @@ export function NotificationCenter() {
 
     const handleNavigate = useCallback((n: Notification) => {
         setOpen(false)
+        removeNotification(n.id)
         if (n.sessionId) {
             void navigate({
                 to: '/sessions/$sessionId',
@@ -78,7 +79,7 @@ export function NotificationCenter() {
         if (n.url) {
             void navigate({ to: n.url })
         }
-    }, [navigate])
+    }, [navigate, removeNotification])
 
     const handleClearAll = useCallback(() => {
         clearAll()
@@ -109,7 +110,7 @@ export function NotificationCenter() {
                 >
                     <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--app-border)] bg-[var(--app-secondary-bg)]">
                         <span className="text-sm font-semibold text-[var(--app-fg)]">
-                            {t('notifications.title', { defaultValue: 'Notifications' })}
+                            {t('notifications.title')}
                         </span>
                         {notifications.length > 0 ? (
                             <button
@@ -117,14 +118,14 @@ export function NotificationCenter() {
                                 onClick={handleClearAll}
                                 className="text-xs text-[var(--app-hint)] hover:text-[var(--app-fg)] transition-colors"
                             >
-                                {t('notifications.clearAll', { defaultValue: 'Clear all' })}
+                                {t('notifications.clearAll')}
                             </button>
                         ) : null}
                     </div>
                     <div className="app-scroll-y flex-1 min-h-0">
                         {notifications.length === 0 ? (
                             <div className="p-6 text-center text-sm text-[var(--app-hint)]">
-                                {t('notifications.empty', { defaultValue: 'No notifications' })}
+                                {t('notifications.empty')}
                             </div>
                         ) : (
                             notifications.map((n) => (
@@ -140,7 +141,7 @@ export function NotificationCenter() {
                 type="button"
                 onClick={handleToggle}
                 className="relative h-10 w-10 rounded-full bg-[var(--app-secondary-bg)] border border-[var(--app-border)] shadow-lg flex items-center justify-center text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors"
-                title={t('notifications.title', { defaultValue: 'Notifications' })}
+                title={t('notifications.title')}
             >
                 <BellIcon className="h-5 w-5" />
                 {unreadCount > 0 ? (
