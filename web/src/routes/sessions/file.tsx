@@ -11,8 +11,8 @@ import { queryKeys } from '@/lib/query-keys'
 import { langAlias, useShikiHighlighter } from '@/lib/shiki'
 import { decodeBase64 } from '@/lib/utils'
 
-const MarkdownRenderer = lazy(() =>
-    import('@/components/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer }))
+const FileMarkdownRenderer = lazy(() =>
+    import('@/components/FileMarkdownRenderer').then((m) => ({ default: m.FileMarkdownRenderer }))
 )
 
 const MAX_COPYABLE_FILE_BYTES = 1_000_000
@@ -156,9 +156,9 @@ function extractCommandError(result: GitCommandResponse | undefined): string | n
 function MarkdownPreview(props: { content: string }) {
     return (
         <div className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] p-4">
-            <div className="aui-md min-w-0 max-w-full break-words text-base [&_.aui-md-pre-wrapper]:max-w-full">
+            <div className="min-w-0 max-w-full break-words text-base [&_.aui-md-pre-wrapper]:max-w-full">
                 <Suspense fallback={<FileContentSkeleton />}>
-                    <MarkdownRenderer content={props.content} />
+                    <FileMarkdownRenderer content={props.content} />
                 </Suspense>
             </div>
         </div>

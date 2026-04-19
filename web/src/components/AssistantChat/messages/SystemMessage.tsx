@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useAssistantState } from '@assistant-ui/react'
 import { getEventPresentation } from '@/chat/presentation'
-import { cn } from '@/lib/utils'
 import type { HappyChatMessageMetadata } from '@/lib/assistant-runtime'
+import { cn } from '@/lib/utils'
 
 const COLLAPSE_THRESHOLD = 200
 
@@ -18,7 +18,10 @@ function ChevronIcon(props: { open?: boolean }) {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className={cn('transition-transform duration-200', props.open ? 'rotate-90' : '')}
+            className={cn(
+                'transition-transform duration-200',
+                props.open ? 'rotate-90' : ''
+            )}
         >
             <polyline points="9 18 15 12 9 6" />
         </svg>
@@ -26,8 +29,6 @@ function ChevronIcon(props: { open?: boolean }) {
 }
 
 export function HappySystemMessage() {
-    const [isOpen, setIsOpen] = useState(false)
-
     const role = useAssistantState(({ message }) => message.role)
     const text = useAssistantState(({ message }) => {
         if (message.role !== 'system') return ''
@@ -39,6 +40,8 @@ export function HappySystemMessage() {
         const event = custom?.kind === 'event' ? custom.event : undefined
         return event ? getEventPresentation(event).icon : null
     })
+
+    const [isOpen, setIsOpen] = useState(false)
 
     if (role !== 'system') return null
 
@@ -64,7 +67,7 @@ export function HappySystemMessage() {
                     type="button"
                     onClick={() => setIsOpen(!isOpen)}
                     className={cn(
-                        'mx-auto flex items-center gap-1.5 text-xs font-medium',
+                        'flex items-center gap-1.5 text-xs font-medium mx-auto',
                         'text-[var(--app-hint)] hover:text-[var(--app-fg)]',
                         'transition-colors cursor-pointer select-none'
                     )}
@@ -73,13 +76,20 @@ export function HappySystemMessage() {
                     <span>📦</span>
                     <span>Conversation summary</span>
                 </button>
+
                 <div
                     className={cn(
                         'overflow-hidden transition-all duration-200 ease-in-out',
-                        isOpen ? 'max-h-[60vh] opacity-100 overflow-y-auto' : 'max-h-0 opacity-0'
+                        isOpen ? 'max-h-[60vh] opacity-100 mt-2' : 'max-h-0 opacity-0'
                     )}
                 >
-                    <div className="mt-2 pl-4 border-l-2 border-[var(--app-border)] ml-0.5 text-xs text-[var(--app-hint)] whitespace-pre-wrap break-words">
+                    <div
+                        className={cn(
+                            'max-h-[60vh] overflow-y-auto',
+                            'pl-4 border-l-2 border-[var(--app-border)] ml-0.5',
+                            'text-xs text-[var(--app-hint)] whitespace-pre-wrap break-words'
+                        )}
+                    >
                         {text}
                     </div>
                 </div>
