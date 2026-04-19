@@ -2,6 +2,7 @@ import type { AttachmentAdapter, PendingAttachment, CompleteAttachment, Attachme
 import type { ApiClient } from '@/api/client'
 import type { AttachmentMetadata } from '@/types/api'
 import { isImageMimeType } from '@/lib/fileAttachments'
+import { compressImage, isCompressibleImage } from '@/lib/imageCompression'
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 const MAX_PREVIEW_BYTES = 5 * 1024 * 1024
@@ -9,6 +10,9 @@ const MAX_PREVIEW_BYTES = 5 * 1024 * 1024
 type PendingUploadAttachment = PendingAttachment & {
     path?: string
     previewUrl?: string
+    uploadFilename?: string
+    uploadMimeType?: string
+    uploadSize?: number
 }
 
 export function createAttachmentAdapter(api: ApiClient, sessionId: string): AttachmentAdapter {
@@ -56,7 +60,20 @@ export function createAttachmentAdapter(api: ApiClient, sessionId: string): Atta
                     return
                 }
 
-                const content = await fileToBase64(file)
+                let uploadFile = file
+                let uploadName = file.name
+                let uploadContentType = contentType
+                if (isCompressibleImage(contentType)) {
+                    try {
+                        uploadFile = await compressImage(file)
+                        uploadName = uploadFile.name
+                        uploadContentType = uploadFile.type || contentType
+                    } catch {
+                        // Compression failed, use original
+                    }
+                }
+
+                const content = await fileToBase64(uploadFile)
                 if (cancelledAttachmentIds.has(id)) {
                     return
                 }
@@ -70,7 +87,7 @@ export function createAttachmentAdapter(api: ApiClient, sessionId: string): Atta
                     status: { type: 'running', reason: 'uploading', progress: 50 }
                 }
 
-                const result = await api.uploadFile(sessionId, file.name, content, contentType)
+                const result = await api.uploadFile(sessionId, uploadName, content, uploadContentType)
                 if (cancelledAttachmentIds.has(id)) {
                     if (result.success && result.path) {
                         await deleteUpload(result.path)
@@ -92,8 +109,8 @@ export function createAttachmentAdapter(api: ApiClient, sessionId: string): Atta
 
                 // Generate preview URL for images under 5MB
                 let previewUrl: string | undefined
-                if (isImageMimeType(contentType) && file.size <= MAX_PREVIEW_BYTES) {
-                    previewUrl = await fileToDataUrl(file)
+                if (isImageMimeType(uploadContentType) && uploadFile.size <= MAX_PREVIEW_BYTES) {
+                    previewUrl = await fileToDataUrl(uploadFile)
                 }
 
                 yield {
@@ -104,7 +121,10 @@ export function createAttachmentAdapter(api: ApiClient, sessionId: string): Atta
                     file,
                     status: { type: 'requires-action', reason: 'composer-send' },
                     path: result.path,
-                    previewUrl
+                    previewUrl,
+                    uploadFilename: uploadName,
+                    uploadMimeType: uploadContentType,
+                    uploadSize: uploadFile.size
                 } as PendingUploadAttachment
             } catch {
                 yield {
@@ -131,9 +151,9 @@ export function createAttachmentAdapter(api: ApiClient, sessionId: string): Atta
             // Build AttachmentMetadata to be sent with the message
             const metadata: AttachmentMetadata | undefined = path ? {
                 id: attachment.id,
-                filename: attachment.name,
-                mimeType: attachment.contentType ?? 'application/octet-stream',
-                size: attachment.file?.size ?? 0,
+                filename: pending.uploadFilename ?? attachment.name,
+                mimeType: pending.uploadMimeType ?? attachment.contentType ?? 'application/octet-stream',
+                size: pending.uploadSize ?? attachment.file?.size ?? 0,
                 path,
                 previewUrl: pending.previewUrl
             } : undefined
