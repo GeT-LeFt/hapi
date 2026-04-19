@@ -50,6 +50,11 @@ export function useSidebarResize() {
         }
     }, [isDragging, width])
 
+    // Sync sidebar width to :root so CSS can reference it
+    useEffect(() => {
+        document.documentElement.style.setProperty('--sidebar-w', `${width}px`)
+    }, [width])
+
     // Prevent text selection while dragging
     useEffect(() => {
         if (isDragging) {
