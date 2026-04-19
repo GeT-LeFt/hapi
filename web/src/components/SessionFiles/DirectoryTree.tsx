@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ApiClient } from '@/api/client'
 import { FileIcon } from '@/components/FileIcon'
 import { useSessionDirectory } from '@/hooks/queries/useSessionDirectory'
+import { usePlatform } from '@/hooks/usePlatform'
 
 function ChevronIcon(props: { className?: string; collapsed: boolean }) {
     return (
@@ -232,6 +233,7 @@ function DirectoryNode(props: DirectoryNodeProps) {
         enabled: isExpanded
     })
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const { isTouch } = usePlatform()
 
     const directories = useMemo(() => entries.filter((entry) => entry.type === 'directory'), [entries])
     const files = useMemo(() => entries.filter((entry) => entry.type === 'file'), [entries])
@@ -276,7 +278,7 @@ function DirectoryNode(props: DirectoryNodeProps) {
                         <div className="truncate font-medium">{props.label}</div>
                     </div>
                 </button>
-                <div className="flex items-center gap-0.5 pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className={`flex items-center gap-0.5 pr-2 ${isTouch ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
                     {props.onCreateFolder ? (
                         <button
                             type="button"
@@ -366,7 +368,7 @@ function DirectoryNode(props: DirectoryNodeProps) {
                                         </div>
                                     </button>
                                     {props.onDownloadFile ? (
-                                        <div className="pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className={`pr-2 ${isTouch ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
