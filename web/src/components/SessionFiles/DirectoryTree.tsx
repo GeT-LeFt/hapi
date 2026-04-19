@@ -217,7 +217,7 @@ interface DirectoryNodeProps {
     depth: number
     onOpenFile: (path: string) => void
     onDownloadFile?: (path: string, fileName: string) => void
-    onUploadFile?: (directoryPath: string) => void
+    onUploadFile?: (directoryPath: string, file: File) => void | Promise<void>
     onCreateFolder?: (parentPath: string, name: string) => void
     expanded: Set<string>
     onToggle: (path: string) => void
@@ -250,7 +250,7 @@ function DirectoryNode(props: DirectoryNodeProps) {
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file && props.onUploadFile) {
-            props.onUploadFile(props.path)
+            props.onUploadFile(props.path, file)
         }
         if (fileInputRef.current) fileInputRef.current.value = ''
     }
@@ -406,7 +406,7 @@ export function DirectoryTree(props: {
     rootLabel: string
     onOpenFile: (path: string) => void
     onDownloadFile?: (path: string, fileName: string) => void
-    onUploadFile?: (directoryPath: string) => void
+    onUploadFile?: (directoryPath: string, file: File) => void | Promise<void>
     onCreateFolder?: (parentPath: string, name: string) => void
 }) {
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']))
