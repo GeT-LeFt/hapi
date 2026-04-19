@@ -42,7 +42,7 @@ export function AttachmentItem() {
     const previewUrl = (attachment as Record<string, unknown>).previewUrl as string | undefined
     const isImage = typeof previewUrl === 'string' && previewUrl.length > 0
 
-    if (isImage && !isUploading && !isError) {
+    if (isImage && !isError) {
         return (
             <>
                 <AttachmentPrimitive.Root className="group relative overflow-hidden rounded-lg">
@@ -52,13 +52,21 @@ export function AttachmentItem() {
                         className="h-16 max-w-[120px] cursor-pointer rounded-lg object-cover transition-opacity hover:opacity-80"
                         onClick={() => setLightboxOpen(true)}
                     />
+                    {isUploading && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40">
+                            <Spinner size="sm" label={null} className="text-white" />
+                        </div>
+                    )}
                     <AttachmentPrimitive.Remove
-                        className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--app-bg)] text-[var(--app-hint)] shadow-sm opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--app-fg)]"
+                        className="absolute -right-1 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white/80 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80 hover:text-white"
                         aria-label="Remove attachment"
                         title="Remove attachment"
                     >
                         <RemoveIcon />
                     </AttachmentPrimitive.Remove>
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 py-1">
+                        <span className="text-[10px] leading-tight text-white/90 line-clamp-1">{name}</span>
+                    </div>
                 </AttachmentPrimitive.Root>
                 <ImageLightbox src={previewUrl} alt={name} open={lightboxOpen} onClose={() => setLightboxOpen(false)} />
             </>
