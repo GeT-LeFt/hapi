@@ -292,4 +292,8 @@ export default {
   'misc.permissionRequired': '需要权限',
   'misc.percentLeft': '剩余 {percent}%',
   'misc.online': '在线',
+
+  'notifications.title': '通知',
+  'notifications.clearAll': '全部清除',
+  'notifications.empty': '暂无通知',
 } as const
