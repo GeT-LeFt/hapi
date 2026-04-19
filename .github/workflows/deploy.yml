@@ -69,6 +69,8 @@ jobs:
           script: |
             set -e
 
+            CONTAINER="hapi-staging"
+            PORT=3007
             IMAGE=${{ secrets.ACR_REGISTRY }}/getleft/hapi:latest-staging
 
             docker login \
@@ -78,29 +80,65 @@ jobs:
 
             docker pull "$IMAGE"
 
-            docker stop hapi-staging 2>/dev/null || true
-            docker rm hapi-staging 2>/dev/null || true
+            # --- Phase 1: Stop old container (30s graceful shutdown) ---
+            docker stop -t 30 "$CONTAINER" 2>/dev/null || true
+            docker rm "$CONTAINER" 2>/dev/null || true
 
+            # --- Phase 2: Wait for port release + zombie cleanup ---
+            for i in $(seq 1 15); do
+              if ! ss -tlnp | grep -q ":${PORT} "; then
+                echo "Port ${PORT} released."
+                break
+              fi
+              if [ "$i" = "15" ]; then
+                echo "WARN: Port ${PORT} still occupied after 15s, cleaning up..."
+                PID=$(ss -tlnp | grep ":${PORT} " | grep -oP "pid=\K[0-9]+" | head -1)
+                if [ -n "$PID" ]; then
+                  echo "Killing zombie process PID=$PID"
+                  kill -9 "$PID" 2>/dev/null || true
+                  sleep 2
+                fi
+                if ss -tlnp | grep -q ":${PORT} "; then
+                  echo "WARN: Port still occupied, restarting Docker daemon..."
+                  systemctl restart docker
+                  sleep 10
+                fi
+              fi
+              sleep 1
+            done
+
+            # --- Phase 3: Start new container WITHOUT restart policy ---
             docker run -d \
-              --name hapi-staging \
-              --restart unless-stopped \
+              --name "$CONTAINER" \
+              --restart no \
               --network host \
               -v /root/.hapi-staging:/root/.hapi \
               --env-file /opt/hapi/.env.staging \
               "$IMAGE"
 
+            # --- Phase 4: Health check ---
             echo "Waiting for HAPI staging to start..."
+            HEALTHY=false
             for i in $(seq 1 30); do
-              if curl -sf http://localhost:3007/health > /dev/null 2>&1; then
+              if curl -sf http://localhost:${PORT}/health > /dev/null 2>&1; then
                 echo "HAPI staging is healthy!"
-                exit 0
+                HEALTHY=true
+                break
               fi
               sleep 2
             done
 
-            echo "Staging health check failed after 60s"
-            docker logs hapi-staging --tail 50
-            exit 1
+            # --- Phase 5: Set restart policy on success, cleanup on failure ---
+            if [ "$HEALTHY" = "true" ]; then
+              docker update --restart unless-stopped "$CONTAINER"
+              echo "Restart policy set to unless-stopped."
+            else
+              echo "Staging health check failed after 60s"
+              docker logs "$CONTAINER" --tail 50
+              docker stop "$CONTAINER" 2>/dev/null || true
+              docker rm "$CONTAINER" 2>/dev/null || true
+              exit 1
+            fi
 
   deploy-production:
     if: github.ref_name == 'main'
@@ -119,6 +157,8 @@ jobs:
           script: |
             set -e
 
+            CONTAINER="hapi"
+            PORT=3006
             IMAGE=${{ secrets.ACR_REGISTRY }}/getleft/hapi:latest
 
             docker login \
@@ -128,29 +168,65 @@ jobs:
 
             docker pull "$IMAGE"
 
-            docker stop hapi 2>/dev/null || true
-            docker rm hapi 2>/dev/null || true
+            # --- Phase 1: Stop old container (30s graceful shutdown) ---
+            docker stop -t 30 "$CONTAINER" 2>/dev/null || true
+            docker rm "$CONTAINER" 2>/dev/null || true
 
             systemctl stop hapi.service hapi-hub.service 2>/dev/null || true
             systemctl disable hapi.service hapi-hub.service 2>/dev/null || true
 
+            # --- Phase 2: Wait for port release + zombie cleanup ---
+            for i in $(seq 1 15); do
+              if ! ss -tlnp | grep -q ":${PORT} "; then
+                echo "Port ${PORT} released."
+                break
+              fi
+              if [ "$i" = "15" ]; then
+                echo "WARN: Port ${PORT} still occupied after 15s, cleaning up..."
+                PID=$(ss -tlnp | grep ":${PORT} " | grep -oP "pid=\K[0-9]+" | head -1)
+                if [ -n "$PID" ]; then
+                  echo "Killing zombie process PID=$PID"
+                  kill -9 "$PID" 2>/dev/null || true
+                  sleep 2
+                fi
+                if ss -tlnp | grep -q ":${PORT} "; then
+                  echo "WARN: Port still occupied, restarting Docker daemon..."
+                  systemctl restart docker
+                  sleep 10
+                fi
+              fi
+              sleep 1
+            done
+
+            # --- Phase 3: Start new container WITHOUT restart policy ---
             docker run -d \
-              --name hapi \
-              --restart unless-stopped \
+              --name "$CONTAINER" \
+              --restart no \
               --network host \
               -v /root/.hapi:/root/.hapi \
               --env-file /opt/hapi/.env \
               "$IMAGE"
 
+            # --- Phase 4: Health check ---
             echo "Waiting for HAPI to start..."
+            HEALTHY=false
             for i in $(seq 1 30); do
-              if curl -sf http://localhost:3006/health > /dev/null 2>&1; then
+              if curl -sf http://localhost:${PORT}/health > /dev/null 2>&1; then
                 echo "HAPI is healthy!"
-                exit 0
+                HEALTHY=true
+                break
               fi
               sleep 2
             done
 
-            echo "Health check failed after 60s"
-            docker logs hapi --tail 50
-            exit 1
+            # --- Phase 5: Set restart policy on success, cleanup on failure ---
+            if [ "$HEALTHY" = "true" ]; then
+              docker update --restart unless-stopped "$CONTAINER"
+              echo "Restart policy set to unless-stopped."
+            else
+              echo "Health check failed after 60s"
+              docker logs "$CONTAINER" --tail 50
+              docker stop "$CONTAINER" 2>/dev/null || true
+              docker rm "$CONTAINER" 2>/dev/null || true
+              exit 1
+            fi
