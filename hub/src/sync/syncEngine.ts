@@ -65,6 +65,13 @@ export class SyncEngine {
         this.machineCache = new MachineCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
+
+        this.sessionCache.setOnSessionDeleted((sessionId, machineId) => {
+            if (machineId) {
+                this.rpcGateway.cleanupSessionBlobs(machineId, sessionId).catch(() => {})
+            }
+        })
+
         this.reloadAll()
         this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
     }

@@ -6,16 +6,23 @@ import { EventPublisher } from './eventPublisher'
 import { extractTodoWriteTodosFromMessageContent, TodosSchema } from './todos'
 import { extractBackgroundTaskDelta } from './backgroundTasks'
 
+export type SessionDeletedCallback = (sessionId: string, machineId: string | undefined) => void
+
 export class SessionCache {
     private readonly sessions: Map<string, Session> = new Map()
     private readonly lastBroadcastAtBySessionId: Map<string, number> = new Map()
     private readonly todoBackfillAttemptedSessionIds: Set<string> = new Set()
     private readonly deduplicateInProgress: Set<string> = new Set()
+    private onSessionDeleted: SessionDeletedCallback | null = null
 
     constructor(
         private readonly store: Store,
         private readonly publisher: EventPublisher
     ) {
+    }
+
+    setOnSessionDeleted(cb: SessionDeletedCallback): void {
+        this.onSessionDeleted = cb
     }
 
     getSessions(): Session[] {
@@ -403,6 +410,11 @@ export class SessionCache {
         this.todoBackfillAttemptedSessionIds.delete(sessionId)
 
         this.publisher.emit({ type: 'session-removed', sessionId, namespace: session.namespace })
+
+        const machineId = (session.metadata && typeof session.metadata === 'object')
+            ? (session.metadata as Record<string, unknown>).machineId as string | undefined
+            : undefined
+        this.onSessionDeleted?.(sessionId, machineId)
     }
 
     async mergeSessions(oldSessionId: string, newSessionId: string, namespace: string): Promise<void> {
@@ -516,6 +528,9 @@ export class SessionCache {
         }
         this.lastBroadcastAtBySessionId.delete(oldSessionId)
         this.todoBackfillAttemptedSessionIds.delete(oldSessionId)
+
+        const oldMachineId = oldStored.machineId ?? undefined
+        this.onSessionDeleted?.(oldSessionId, oldMachineId)
 
         this.refreshSession(newSessionId)
     }

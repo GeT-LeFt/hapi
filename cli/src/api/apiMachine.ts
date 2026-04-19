@@ -4,6 +4,8 @@
 
 import { io, type Socket } from 'socket.io-client'
 import { stat } from 'node:fs/promises'
+import { cleanupBlobDirBySessionId } from '../modules/common/handlers/uploads'
+import { runBlobGC } from '../modules/common/handlers/blobGc'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
 import type { Update, UpdateMachineBody } from '@hapi/protocol'
@@ -99,6 +101,18 @@ export class ApiMachineClient {
 
             return { exists }
         })
+
+        this.rpcHandlerManager.registerHandler<{ sessionId: string }, { success: boolean }>('cleanupBlobDir', async (params) => {
+            const sessionId = params?.sessionId
+            if (!sessionId) {
+                throw new Error('sessionId is required')
+            }
+            await cleanupBlobDirBySessionId(sessionId)
+            return { success: true }
+        })
+
+        void runBlobGC()
+        setInterval(() => void runBlobGC(), 30 * 60 * 1000)
     }
 
     setRPCHandlers({ spawnSession, stopSession, requestShutdown }: MachineRpcHandlers): void {
