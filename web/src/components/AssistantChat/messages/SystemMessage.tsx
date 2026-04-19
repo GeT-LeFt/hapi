@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { useAssistantState } from '@assistant-ui/react'
 import { getEventPresentation } from '@/chat/presentation'
 import type { HappyChatMessageMetadata } from '@/lib/assistant-runtime'
 import { cn } from '@/lib/utils'
+
+const FileMarkdownRenderer = lazy(() =>
+    import('@/components/FileMarkdownRenderer').then((m) => ({ default: m.FileMarkdownRenderer }))
+)
 
 const COLLAPSE_THRESHOLD = 200
 
@@ -87,10 +91,15 @@ export function HappySystemMessage() {
                         className={cn(
                             'max-h-[60vh] overflow-y-auto',
                             'pl-4 border-l-2 border-[var(--app-border)] ml-0.5',
-                            'text-xs text-[var(--app-hint)] whitespace-pre-wrap break-words'
+                            'text-xs text-[var(--app-hint)] break-words',
+                            '[&_.aui-md]:text-xs [&_.aui-md]:text-[var(--app-hint)]',
+                            '[&_.aui-md-h1]:text-xs [&_.aui-md-h2]:text-xs [&_.aui-md-h3]:text-xs',
+                            '[&_.aui-md-pre-wrapper]:max-w-full'
                         )}
                     >
-                        {text}
+                        <Suspense fallback={<div className="whitespace-pre-wrap">{text}</div>}>
+                            <FileMarkdownRenderer content={text} />
+                        </Suspense>
                     </div>
                 </div>
             </div>
