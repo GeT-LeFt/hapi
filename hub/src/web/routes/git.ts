@@ -210,5 +210,72 @@ export function createGitRoutes(getSyncEngine: () => SyncEngine | null): Hono<We
         return c.json(result)
     })
 
+    const createDirectorySchema = z.object({
+        path: z.string().min(1).max(500)
+    })
+
+    app.post('/sessions/:id/directory', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const sessionPath = sessionResult.session.metadata?.path
+        if (!sessionPath) {
+            return c.json({ success: false, error: 'Session path not available' })
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = createDirectorySchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid request: path is required (1-500 chars)' }, 400)
+        }
+
+        const result = await runRpc(() => engine.createDirectory(sessionResult.sessionId, parsed.data.path))
+        return c.json(result)
+    })
+
+    const writeProjectFileSchema = z.object({
+        path: z.string().min(1).max(500),
+        content: z.string().max(50 * 1024 * 1024),
+        overwrite: z.boolean().optional()
+    })
+
+    app.post('/sessions/:id/write-file', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const sessionPath = sessionResult.session.metadata?.path
+        if (!sessionPath) {
+            return c.json({ success: false, error: 'Session path not available' })
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = writeProjectFileSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid request: path and content are required' }, 400)
+        }
+
+        const result = await runRpc(() => engine.writeProjectFile(
+            sessionResult.sessionId,
+            parsed.data.path,
+            parsed.data.content,
+            parsed.data.overwrite
+        ))
+        return c.json(result)
+    })
+
     return app
 }

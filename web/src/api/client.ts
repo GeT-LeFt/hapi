@@ -4,6 +4,7 @@ import type {
     CodexCollaborationMode,
     DeleteUploadResponse,
     ListDirectoryResponse,
+    CreateDirectoryResponse,
     FileReadResponse,
     FileSearchResponse,
     GitCommandResponse,
@@ -19,6 +20,7 @@ import type {
     SpawnResponse,
     UploadFileResponse,
     VisibilityPayload,
+    WriteProjectFileResponse,
     SessionResponse,
     SessionsResponse
 } from '@/types/api'
@@ -249,6 +251,20 @@ export class ApiClient {
         const qs = params.toString()
         return await this.request<ListDirectoryResponse>(
             `/api/sessions/${encodeURIComponent(sessionId)}/directory${qs ? `?${qs}` : ''}`
+        )
+    }
+
+    async createDirectory(sessionId: string, path: string): Promise<CreateDirectoryResponse> {
+        return await this.request<CreateDirectoryResponse>(
+            `/api/sessions/${encodeURIComponent(sessionId)}/directory`,
+            { method: 'POST', body: JSON.stringify({ path }) }
+        )
+    }
+
+    async writeProjectFile(sessionId: string, path: string, content: string, overwrite?: boolean): Promise<WriteProjectFileResponse> {
+        return await this.request<WriteProjectFileResponse>(
+            `/api/sessions/${encodeURIComponent(sessionId)}/write-file`,
+            { method: 'POST', body: JSON.stringify({ path, content, overwrite }) }
         )
     }
 

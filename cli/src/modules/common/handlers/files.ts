@@ -1,7 +1,7 @@
 import { logger } from '@/ui/logger'
-import { readFile, stat, writeFile } from 'fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import { createHash } from 'crypto'
-import { resolve } from 'path'
+import { resolve, dirname } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validatePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
@@ -92,6 +92,43 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
             return { success: true, hash }
         } catch (error) {
             logger.debug('Failed to write file:', error)
+            return rpcError(getErrorMessage(error, 'Failed to write file'))
+        }
+    })
+
+    rpcHandlerManager.registerHandler<
+        { path: string; content: string; overwrite?: boolean },
+        { success: boolean; path?: string; error?: string }
+    >('writeProjectFile', async (data) => {
+        if (!data.path || !data.path.trim()) {
+            return rpcError('File path is required')
+        }
+
+        const validation = validatePath(data.path, workingDirectory)
+        if (!validation.valid) {
+            return rpcError(validation.error ?? 'Invalid file path')
+        }
+
+        try {
+            const resolvedPath = resolve(workingDirectory, data.path)
+
+            if (!data.overwrite) {
+                try {
+                    await stat(resolvedPath)
+                    return rpcError('File already exists')
+                } catch (error) {
+                    const nodeError = error as NodeJS.ErrnoException
+                    if (nodeError.code !== 'ENOENT') {
+                        throw error
+                    }
+                }
+            }
+
+            await mkdir(dirname(resolvedPath), { recursive: true })
+            await writeFile(resolvedPath, Buffer.from(data.content, 'base64'))
+            return { success: true, path: data.path }
+        } catch (error) {
+            logger.debug('Failed to write project file:', error)
             return rpcError(getErrorMessage(error, 'Failed to write file'))
         }
     })

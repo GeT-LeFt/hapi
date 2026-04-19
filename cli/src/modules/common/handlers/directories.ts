@@ -1,5 +1,5 @@
 import { logger } from '@/ui/logger'
-import { readdir, stat } from 'fs/promises'
+import { mkdir, readdir, stat } from 'fs/promises'
 import { basename, join, resolve } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validatePath } from '../pathSecurity'
@@ -179,6 +179,28 @@ export function registerDirectoryHandlers(rpcHandlerManager: RpcHandlerManager, 
         } catch (error) {
             logger.debug('Failed to get directory tree:', error)
             return rpcError(getErrorMessage(error, 'Failed to get directory tree'))
+        }
+    })
+
+    rpcHandlerManager.registerHandler<{ path: string }, { success: boolean; error?: string }>('createDirectory', async (data) => {
+        logger.debug('Create directory request:', data.path)
+
+        if (!data.path || !data.path.trim()) {
+            return rpcError('Directory path is required')
+        }
+
+        const validation = validatePath(data.path, workingDirectory)
+        if (!validation.valid) {
+            return rpcError(validation.error ?? 'Invalid directory path')
+        }
+
+        try {
+            const resolvedPath = resolve(workingDirectory, data.path)
+            await mkdir(resolvedPath, { recursive: true })
+            return { success: true }
+        } catch (error) {
+            logger.debug('Failed to create directory:', error)
+            return rpcError(getErrorMessage(error, 'Failed to create directory'))
         }
     })
 }

@@ -134,6 +134,17 @@ export type ListDirectoryResponse = {
     error?: string
 }
 
+export type CreateDirectoryResponse = {
+    success: boolean
+    error?: string
+}
+
+export type WriteProjectFileResponse = {
+    success: boolean
+    path?: string
+    error?: string
+}
+
 export type FileReadResponse = {
     success: boolean
     content?: string

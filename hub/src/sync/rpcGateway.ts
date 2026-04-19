@@ -40,6 +40,17 @@ export type RpcListDirectoryResponse = {
     error?: string
 }
 
+export type RpcCreateDirectoryResponse = {
+    success: boolean
+    error?: string
+}
+
+export type RpcWriteProjectFileResponse = {
+    success: boolean
+    path?: string
+    error?: string
+}
+
 export type RpcPathExistsResponse = {
     exists: Record<string, boolean>
 }
@@ -195,6 +206,14 @@ export class RpcGateway {
 
     async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
         return await this.sessionRpc(sessionId, 'listDirectory', { path }) as RpcListDirectoryResponse
+    }
+
+    async createDirectory(sessionId: string, path: string): Promise<RpcCreateDirectoryResponse> {
+        return await this.sessionRpc(sessionId, 'createDirectory', { path }) as RpcCreateDirectoryResponse
+    }
+
+    async writeProjectFile(sessionId: string, path: string, content: string, overwrite?: boolean): Promise<RpcWriteProjectFileResponse> {
+        return await this.sessionRpc(sessionId, 'writeProjectFile', { path, content, overwrite }) as RpcWriteProjectFileResponse
     }
 
     async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {

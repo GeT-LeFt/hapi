@@ -18,11 +18,13 @@ import { MessageService } from './messageService'
 import {
     RpcGateway,
     type RpcCommandResponse,
+    type RpcCreateDirectoryResponse,
     type RpcDeleteUploadResponse,
     type RpcListDirectoryResponse,
     type RpcPathExistsResponse,
     type RpcReadFileResponse,
-    type RpcUploadFileResponse
+    type RpcUploadFileResponse,
+    type RpcWriteProjectFileResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
 
@@ -31,11 +33,13 @@ export type { Machine } from './machineCache'
 export type { SyncEventListener } from './eventPublisher'
 export type {
     RpcCommandResponse,
+    RpcCreateDirectoryResponse,
     RpcDeleteUploadResponse,
     RpcListDirectoryResponse,
     RpcPathExistsResponse,
     RpcReadFileResponse,
-    RpcUploadFileResponse
+    RpcUploadFileResponse,
+    RpcWriteProjectFileResponse
 } from './rpcGateway'
 
 export type ResumeSessionResult =
@@ -527,6 +531,14 @@ export class SyncEngine {
 
     async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
         return await this.rpcGateway.listDirectory(sessionId, path)
+    }
+
+    async createDirectory(sessionId: string, path: string): Promise<RpcCreateDirectoryResponse> {
+        return await this.rpcGateway.createDirectory(sessionId, path)
+    }
+
+    async writeProjectFile(sessionId: string, path: string, content: string, overwrite?: boolean): Promise<RpcWriteProjectFileResponse> {
+        return await this.rpcGateway.writeProjectFile(sessionId, path, content, overwrite)
     }
 
     async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
