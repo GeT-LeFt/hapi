@@ -11,6 +11,9 @@ import type { ConversationStatus } from '@/realtime/types'
 import { getContextBudgetTokens } from '@/chat/modelConfig'
 import { useTranslation } from '@/lib/use-translation'
 
+import { LlmUsageBadge } from './LlmUsageBadge'
+import type { ApiClient } from '@/api/client'
+
 // Vibing messages for thinking state
 const VIBING_MESSAGES = [
     "Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing",
@@ -127,6 +130,7 @@ export function StatusBar(props: {
     collaborationMode?: CodexCollaborationMode
     agentFlavor?: string | null
     voiceStatus?: ConversationStatus
+    api?: ApiClient | null
 }) {
     const { t } = useTranslation()
     const connectionStatus = useMemo(
@@ -180,6 +184,7 @@ export function StatusBar(props: {
             </div>
 
             <div className="flex items-center gap-2">
+                <LlmUsageBadge api={props.api ?? null} />
                 {collaborationModeLabel ? (
                     <span className="text-xs text-blue-500">
                         {collaborationModeLabel}

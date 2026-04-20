@@ -449,6 +449,20 @@ export class ApiClient {
         })
     }
 
+    async getLlmUsage(): Promise<{
+        data: {
+            updated: string
+            today: string
+            today_spend: string
+            week: Array<{ date: string; day: string; spend: string }>
+            week_total: string
+            receivedAt: number
+        } | null
+        stale: boolean
+    }> {
+        return await this.request('/api/llm-usage')
+    }
+
     async fetchVoiceToken(options?: { customAgentId?: string; customApiKey?: string }): Promise<{
         allowed: boolean
         token?: string
