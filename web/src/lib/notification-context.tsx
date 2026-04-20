@@ -15,6 +15,7 @@ export type NotificationContextValue = {
     unreadCount: number
     addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void
     removeNotification: (id: string) => void
+    removeBySession: (sessionId: string) => void
     markAllRead: () => void
     clearAll: () => void
 }
@@ -76,6 +77,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setNotifications((prev) => prev.filter((n) => n.id !== id))
     }, [])
 
+    const removeBySession = useCallback((sessionId: string) => {
+        setNotifications((prev) => {
+            const next = prev.filter((n) => n.sessionId !== sessionId)
+            return next.length === prev.length ? prev : next
+        })
+    }, [])
+
     const markAllRead = useCallback(() => {
         setNotifications((prev) => {
             if (prev.every((n) => n.read)) return prev
@@ -92,9 +100,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         unreadCount,
         addNotification,
         removeNotification,
+        removeBySession,
         markAllRead,
         clearAll
-    }), [notifications, unreadCount, addNotification, removeNotification, markAllRead, clearAll])
+    }), [notifications, unreadCount, addNotification, removeNotification, removeBySession, markAllRead, clearAll])
 
     return (
         <NotificationContext.Provider value={value}>

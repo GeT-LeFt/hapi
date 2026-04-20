@@ -30,6 +30,7 @@ import { useSendMessage } from '@/hooks/mutations/useSendMessage'
 import { queryKeys } from '@/lib/query-keys'
 import { useToast } from '@/lib/toast-context'
 import { useUnread } from '@/lib/unread-context'
+import { useNotification } from '@/lib/notification-context'
 import { useTranslation } from '@/lib/use-translation'
 import { fetchLatestMessages, seedMessageWindowFromSession } from '@/lib/message-window-store'
 import { clearDraftsAfterSend } from '@/lib/clearDraftsAfterSend'
@@ -132,12 +133,14 @@ function SessionsPage() {
     const isSessionsIndex = pathname === '/sessions' || pathname === '/sessions/'
     const sidebar = useSidebarResize()
     const { markRead } = useUnread()
+    const { removeBySession } = useNotification()
 
     useEffect(() => {
         if (selectedSessionId) {
             markRead(selectedSessionId)
+            removeBySession(selectedSessionId)
         }
-    }, [selectedSessionId, markRead])
+    }, [selectedSessionId, markRead, removeBySession])
 
     return (
         <div className="flex h-full min-h-0">
