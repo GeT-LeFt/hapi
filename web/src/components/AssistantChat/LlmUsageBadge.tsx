@@ -27,11 +27,11 @@ function Sparkline({ week }: { week: LlmUsageWeekEntry[] }) {
     const max = Math.max(...spends, 1)
     const barWidth = 4
     const gap = 2
-    const height = 14
+    const height = 11
     const totalWidth = week.length * barWidth + (week.length - 1) * gap
 
     return (
-        <svg width={totalWidth} height={height} className="inline-block align-middle">
+        <svg width={totalWidth} height={height} className="block shrink-0">
             {spends.map((spend, i) => {
                 const barHeight = Math.max(1, (spend / max) * (height - 1))
                 return (

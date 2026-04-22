@@ -60,9 +60,10 @@ export function reduceChatBlocks(
 
         const createdAt = entry.permission.createdAt ?? Date.now()
 
-        // Skip permissions that are older than the oldest message in the current view.
+        // Skip non-pending permissions that are older than the oldest message in the current view.
         // These will be shown when the user loads older messages.
-        if (oldestMessageTime !== null && createdAt < oldestMessageTime) {
+        // Pending permissions are always shown so the user can approve/deny them.
+        if (oldestMessageTime !== null && createdAt < oldestMessageTime && entry.permission.status !== 'pending') {
             continue
         }
 
