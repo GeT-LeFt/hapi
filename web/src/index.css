@@ -205,6 +205,39 @@ body {
     opacity: 0.6;
 }
 
+/* Mobile slide transition between session list and chat detail.
+   On mobile (<1024px), the two panels stack absolutely within the container and
+   slide horizontally via transform. On desktop, these rules don't apply and the
+   original flex layout is preserved. */
+@media (max-width: 1023.98px) {
+    .mobile-slide-container {
+        position: relative;
+        overflow: hidden;
+    }
+    .mobile-slide-panel {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        transition: transform 280ms cubic-bezier(0.32, 0.72, 0, 1);
+        will-change: transform;
+    }
+    .mobile-slide-panel-left {
+        transform: translateX(0);
+    }
+    .mobile-slide-panel-left[data-mobile-hidden] {
+        transform: translateX(-100%);
+        pointer-events: none;
+    }
+    .mobile-slide-panel-right {
+        transform: translateX(100%);
+        pointer-events: none;
+    }
+    .mobile-slide-panel-right:not([data-mobile-hidden]) {
+        transform: translateX(0);
+        pointer-events: auto;
+    }
+}
+
 /*
  * content-visibility: auto lets the browser skip layout/paint for messages
  * scrolled out of the viewport. Big win on Windows with long conversations (#310).

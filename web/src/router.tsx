@@ -143,9 +143,10 @@ function SessionsPage() {
     }, [selectedSessionId, markRead, removeBySession])
 
     return (
-        <div className="flex h-full min-h-0">
+        <div className="mobile-slide-container flex h-full min-h-0 w-full">
             <div
-                className={`${isSessionsIndex ? 'flex' : 'hidden lg:flex'} w-full shrink-0 flex-col bg-[var(--app-bg)]`}
+                data-mobile-hidden={!isSessionsIndex || undefined}
+                className="mobile-slide-panel mobile-slide-panel-left flex w-full shrink-0 flex-col bg-[var(--app-bg)]"
                 style={{ '--sidebar-w': `${sidebar.width}px` } as React.CSSProperties}
             >
                 <div className="bg-[var(--app-bg)] pt-[env(safe-area-inset-top)]">
@@ -204,7 +205,10 @@ function SessionsPage() {
                 onPointerDown={sidebar.onPointerDown}
             />
 
-            <div className={`${isSessionsIndex ? 'hidden lg:flex' : 'flex'} min-w-0 flex-1 flex-col bg-[var(--app-bg)]`}>
+            <div
+                data-mobile-hidden={isSessionsIndex || undefined}
+                className="mobile-slide-panel mobile-slide-panel-right flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]"
+            >
                 <div className="flex-1 min-h-0">
                     <Outlet />
                 </div>
