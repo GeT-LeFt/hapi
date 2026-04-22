@@ -140,24 +140,6 @@ jobs:
               exit 1
             fi
 
-            # --- Phase 6: Start runner for staging hub ---
-            RUNNER_CONTAINER="hapi-staging-runner"
-            docker stop -t 10 "$RUNNER_CONTAINER" 2>/dev/null || true
-            docker rm "$RUNNER_CONTAINER" 2>/dev/null || true
-            rm -f /root/.hapi-staging/runner.state.json /root/.hapi-staging/runner.state.json.lock
-
-            docker run -d \
-              --name "$RUNNER_CONTAINER" \
-              --restart unless-stopped \
-              --network host \
-              -v /root/.hapi-staging:/root/.hapi \
-              -e HAPI_API_URL=http://localhost:${PORT} \
-              --env-file /opt/hapi/.env.staging \
-              "$IMAGE" \
-              runner start-sync
-
-            echo "Staging runner started, connecting to hub on port ${PORT}."
-
   deploy-production:
     if: github.ref_name == 'main'
     needs: docker-build-push
@@ -248,21 +230,3 @@ jobs:
               docker rm "$CONTAINER" 2>/dev/null || true
               exit 1
             fi
-
-            # --- Phase 6: Start runner for production hub ---
-            RUNNER_CONTAINER="hapi-runner"
-            docker stop -t 10 "$RUNNER_CONTAINER" 2>/dev/null || true
-            docker rm "$RUNNER_CONTAINER" 2>/dev/null || true
-            rm -f /root/.hapi/runner.state.json /root/.hapi/runner.state.json.lock
-
-            docker run -d \
-              --name "$RUNNER_CONTAINER" \
-              --restart unless-stopped \
-              --network host \
-              -v /root/.hapi:/root/.hapi \
-              -e HAPI_API_URL=http://localhost:${PORT} \
-              --env-file /opt/hapi/.env \
-              "$IMAGE" \
-              runner start-sync
-
-            echo "Production runner started, connecting to hub on port ${PORT}."
