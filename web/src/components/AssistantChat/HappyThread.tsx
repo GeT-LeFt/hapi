@@ -184,10 +184,12 @@ export function HappyThread(props: {
         return () => {
             const viewport = viewportRef.current
             if (viewport) {
-                scrollCache.set(props.sessionId, {
+                const entry = {
                     scrollTop: viewport.scrollTop,
                     atBottom: atBottomRef.current
-                })
+                }
+                scrollCache.set(props.sessionId, entry)
+                console.log('[SCROLL] save', props.sessionId.slice(0, 8), entry)
                 if (scrollCache.size > SCROLL_CACHE_MAX) {
                     const oldest = scrollCache.keys().next().value
                     if (oldest) scrollCache.delete(oldest)
@@ -205,6 +207,7 @@ export function HappyThread(props: {
         onFlushPendingRef.current()
         forceScrollTokenRef.current = props.forceScrollToken
         const cached = scrollCache.get(props.sessionId)
+        console.log('[SCROLL] session-change', props.sessionId.slice(0, 8), 'cached=', cached)
         if (cached && !cached.atBottom) {
             pendingRestoreRef.current = { scrollTop: cached.scrollTop }
             atBottomRef.current = false
@@ -316,6 +319,7 @@ export function HappyThread(props: {
                 const el = vp?.querySelector('.happy-thread-messages')
                 if (!vp || !el || el.children.length === 0) return false
                 vp.scrollTop = pendingRestoreRef.current.scrollTop
+                console.log('[SCROLL] restored to', pendingRestoreRef.current.scrollTop)
                 pendingRestoreRef.current = null
                 settlingRef.current = false
                 return true
