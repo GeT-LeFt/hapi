@@ -181,6 +181,8 @@ export const SessionSchema = z.object({
     model: z.string().nullable().optional().default(null),
     modelReasoningEffort: z.string().nullable().optional().default(null),
     effort: z.string().nullable().optional().default(null),
+    pinned: z.boolean().optional().default(false),
+    pinnedAt: z.number().nullable().optional().default(null),
     permissionMode: PermissionModeSchema.optional(),
     collaborationMode: CodexCollaborationModeSchema.optional()
 })

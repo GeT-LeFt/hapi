@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionSummary } from '@/types/api'
 import type { ApiClient } from '@/api/client'
 import { useLongPress } from '@/hooks/useLongPress'
@@ -93,6 +93,10 @@ function groupSessionsByDirectory(sessions: SessionSummary[]): SessionGroup[] {
     return Array.from(groups.entries())
         .map(([key, group]) => {
             const sortedSessions = [...group.sessions].sort((a, b) => {
+                const aPinned = a.pinned ? 1 : 0
+                const bPinned = b.pinned ? 1 : 0
+                if (aPinned !== bPinned) return bPinned - aPinned
+                if (aPinned && bPinned) return (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)
                 const rankA = a.active ? (a.pendingRequestsCount > 0 ? 0 : 1) : 2
                 const rankB = b.active ? (b.pendingRequestsCount > 0 ? 0 : 1) : 2
                 if (rankA !== rankB) return rankA - rankB
@@ -364,7 +368,7 @@ function SessionItem(props: {
     const [archiveOpen, setArchiveOpen] = useState(false)
     const [deleteOpen, setDeleteOpen] = useState(false)
 
-    const { archiveSession, renameSession, deleteSession, isPending } = useSessionActions(
+    const { archiveSession, renameSession, deleteSession, pinSession, isPending } = useSessionActions(
         api,
         s.id,
         s.metadata?.flavor ?? null
@@ -398,6 +402,12 @@ function SessionItem(props: {
                 <div className={`flex items-center justify-between gap-3 ${!s.active ? 'opacity-50' : ''}`}>
                     <div className="flex items-center gap-2 min-w-0">
                         <FlavorIcon flavor={s.metadata?.flavor} className="h-4 w-4 shrink-0" />
+                        {s.pinned ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--app-hint)]">
+                                <line x1="12" x2="12" y1="17" y2="22" />
+                                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                            </svg>
+                        ) : null}
                         <div className={`truncate text-sm font-medium ${s.active ? 'text-[var(--app-fg)]' : 'text-[var(--app-hint)]'}`}>
                             {sessionName}
                         </div>
@@ -435,7 +445,9 @@ function SessionItem(props: {
                 isOpen={menuOpen}
                 onClose={() => setMenuOpen(false)}
                 sessionActive={s.active}
+                sessionPinned={s.pinned}
                 onRename={() => setRenameOpen(true)}
+                onPin={() => pinSession(!s.pinned)}
                 onArchive={() => setArchiveOpen(true)}
                 onDelete={() => setDeleteOpen(true)}
                 anchorPoint={menuAnchorPoint}
@@ -497,6 +509,84 @@ export function SessionList(props: {
     const [collapseOverrides, setCollapseOverrides] = useState<Map<string, boolean>>(
         () => new Map()
     )
+
+    const [selectionMode, setSelectionMode] = useState<{
+        groupKey: string
+        selectedIds: Set<string>
+    } | null>(null)
+
+    const [bulkMenuAnchor, setBulkMenuAnchor] = useState<{ x: number; y: number; groupKey: string } | null>(null)
+    const [bulkConfirm, setBulkConfirm] = useState<{ type: 'delete' | 'archive'; ids: string[] } | null>(null)
+    const [bulkLoading, setBulkLoading] = useState(false)
+
+    const enterSelectionMode = useCallback((groupKey: string) => {
+        setSelectionMode({ groupKey, selectedIds: new Set() })
+    }, [])
+
+    const exitSelectionMode = useCallback(() => {
+        setSelectionMode(null)
+    }, [])
+
+    const toggleSelection = useCallback((sessionId: string) => {
+        setSelectionMode(prev => {
+            if (!prev) return prev
+            const next = new Set(prev.selectedIds)
+            if (next.has(sessionId)) {
+                next.delete(sessionId)
+            } else {
+                next.add(sessionId)
+            }
+            return { ...prev, selectedIds: next }
+        })
+    }, [])
+
+    const toggleSelectAll = useCallback((sessions: SessionSummary[]) => {
+        setSelectionMode(prev => {
+            if (!prev) return prev
+            const selectable = sessions.filter(s => !s.active)
+            const allSelected = selectable.every(s => prev.selectedIds.has(s.id))
+            const next = new Set(prev.selectedIds)
+            if (allSelected) {
+                selectable.forEach(s => next.delete(s.id))
+            } else {
+                selectable.forEach(s => next.add(s.id))
+            }
+            return { ...prev, selectedIds: next }
+        })
+    }, [])
+
+    useEffect(() => {
+        if (!selectionMode) return
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') exitSelectionMode()
+        }
+        document.addEventListener('keydown', handleKeyDown)
+        return () => document.removeEventListener('keydown', handleKeyDown)
+    }, [selectionMode, exitSelectionMode])
+
+    const handleBulkDelete = useCallback(async () => {
+        if (!bulkConfirm || bulkConfirm.type !== 'delete' || !api) return
+        setBulkLoading(true)
+        try {
+            await api.bulkDeleteSessions(bulkConfirm.ids)
+        } finally {
+            setBulkLoading(false)
+            setBulkConfirm(null)
+            exitSelectionMode()
+        }
+    }, [bulkConfirm, api, exitSelectionMode])
+
+    const handleBulkArchive = useCallback(async () => {
+        if (!bulkConfirm || bulkConfirm.type !== 'archive' || !api) return
+        setBulkLoading(true)
+        try {
+            await api.bulkArchiveSessions(bulkConfirm.ids)
+        } finally {
+            setBulkLoading(false)
+            setBulkConfirm(null)
+            exitSelectionMode()
+        }
+    }, [bulkConfirm, api, exitSelectionMode])
     const isGroupCollapsed = (group: SessionGroup): boolean => {
         const override = collapseOverrides.get(group.key)
         if (override !== undefined) return override
@@ -640,17 +730,47 @@ export function SessionList(props: {
                                             <div key={group.key}>
                                                 <div
                                                     className="group/project sticky top-0 z-10 flex items-center gap-2 px-1 py-1.5 text-left rounded-lg transition-colors hover:bg-[var(--app-subtle-bg)] cursor-pointer min-w-0 w-full select-none"
-                                                    onClick={() => toggleGroup(group.key, isCollapsed)}
+                                                    onClick={() => {
+                                                        if (selectionMode?.groupKey === group.key) return
+                                                        toggleGroup(group.key, isCollapsed)
+                                                    }}
+                                                    onContextMenu={(e) => {
+                                                        e.preventDefault()
+                                                        setBulkMenuAnchor({ x: e.clientX, y: e.clientY, groupKey: group.key })
+                                                    }}
                                                     title={group.directory}
                                                 >
                                                     <ChevronIcon className="h-3.5 w-3.5 text-[var(--app-hint)] shrink-0" collapsed={isCollapsed} />
-                                                    <span className="font-medium text-sm truncate flex-1">
-                                                        {group.displayName}
-                                                    </span>
-                                                    <CopyPathButton path={group.directory} className="opacity-0 group-hover/project:opacity-100 transition-opacity duration-150" />
-                                                    <span className="text-[11px] tabular-nums text-[var(--app-hint)] shrink-0">
-                                                        ({group.sessions.length})
-                                                    </span>
+                                                    {selectionMode?.groupKey === group.key ? (
+                                                        <>
+                                                            <label className="flex items-center gap-1.5 text-sm font-medium truncate flex-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={group.sessions.filter(s => !s.active).length > 0 && group.sessions.filter(s => !s.active).every(s => selectionMode.selectedIds.has(s.id))}
+                                                                    onChange={() => toggleSelectAll(group.sessions)}
+                                                                    className="accent-[var(--app-link)]"
+                                                                />
+                                                                {t('session.bulk.selectAll')}
+                                                            </label>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { e.stopPropagation(); exitSelectionMode() }}
+                                                                className="text-xs text-[var(--app-link)] hover:underline shrink-0"
+                                                            >
+                                                                {t('session.bulk.cancel')}
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span className="font-medium text-sm truncate flex-1">
+                                                                {group.displayName}
+                                                            </span>
+                                                            <CopyPathButton path={group.directory} className="opacity-0 group-hover/project:opacity-100 transition-opacity duration-150" />
+                                                            <span className="text-[11px] tabular-nums text-[var(--app-hint)] shrink-0">
+                                                                ({group.sessions.length})
+                                                            </span>
+                                                        </>
+                                                    )}
                                                 </div>
 
                                                 {/* Level 3: Sessions */}
@@ -658,15 +778,33 @@ export function SessionList(props: {
                                                     <div className="collapsible-inner">
                                                     <div className="flex flex-col gap-0.5 ml-3 pl-1 pr-1 py-1">
                                                         {group.sessions.map((s) => (
-                                                            <SessionItem
-                                                                key={s.id}
-                                                                session={s}
-                                                                onSelect={props.onSelect}
-                                                                showPath={false}
-                                                                api={api}
-                                                                selected={s.id === selectedSessionId}
-                                                                isUnread={unreadSessionIds.has(s.id)}
-                                                            />
+                                                            selectionMode?.groupKey === group.key ? (
+                                                                <label
+                                                                    key={s.id}
+                                                                    className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm cursor-pointer transition-colors hover:bg-[var(--app-subtle-bg)] ${s.active ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={selectionMode.selectedIds.has(s.id)}
+                                                                        disabled={s.active}
+                                                                        onChange={() => toggleSelection(s.id)}
+                                                                        className="accent-[var(--app-link)]"
+                                                                    />
+                                                                    <FlavorIcon flavor={s.metadata?.flavor} className="h-4 w-4 shrink-0" />
+                                                                    <span className="truncate">{getSessionTitle(s)}</span>
+                                                                    {s.active ? <span className="text-xs text-[var(--app-hint)] shrink-0">(active)</span> : null}
+                                                                </label>
+                                                            ) : (
+                                                                <SessionItem
+                                                                    key={s.id}
+                                                                    session={s}
+                                                                    onSelect={props.onSelect}
+                                                                    showPath={false}
+                                                                    api={api}
+                                                                    selected={s.id === selectedSessionId}
+                                                                    isUnread={unreadSessionIds.has(s.id)}
+                                                                />
+                                                            )
                                                         ))}
                                                     </div>
                                                     </div>
@@ -681,6 +819,101 @@ export function SessionList(props: {
                     )
                 })}
             </div>
+
+            {/* Project group context menu */}
+            {bulkMenuAnchor ? (
+                <ProjectGroupContextMenu
+                    anchor={bulkMenuAnchor}
+                    onBatchManage={() => {
+                        enterSelectionMode(bulkMenuAnchor.groupKey)
+                        setBulkMenuAnchor(null)
+                    }}
+                    onClose={() => setBulkMenuAnchor(null)}
+                />
+            ) : null}
+
+            {/* Bulk action bar */}
+            {selectionMode && selectionMode.selectedIds.size > 0 ? (
+                <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 px-4 py-2.5 border-t border-[var(--app-border)] bg-[var(--app-bg)]">
+                    <span className="text-sm text-[var(--app-fg)]">
+                        {t('session.bulk.selected', { count: selectionMode.selectedIds.size })}
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            className="px-3 py-1.5 text-sm rounded-md bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                            onClick={() => setBulkConfirm({ type: 'delete', ids: Array.from(selectionMode.selectedIds) })}
+                        >
+                            {t('session.bulk.delete')}
+                        </button>
+                    </div>
+                </div>
+            ) : null}
+
+            {/* Bulk confirm dialogs */}
+            <ConfirmDialog
+                isOpen={bulkConfirm?.type === 'delete'}
+                title={t('session.bulk.delete')}
+                description={t('session.bulk.confirmDelete', { count: bulkConfirm?.ids.length ?? 0 })}
+                confirmLabel={t('session.bulk.delete')}
+                confirmingLabel={t('session.bulk.delete') + '…'}
+                isPending={bulkLoading}
+                onConfirm={handleBulkDelete}
+                onClose={() => setBulkConfirm(null)}
+                destructive
+            />
+            <ConfirmDialog
+                isOpen={bulkConfirm?.type === 'archive'}
+                title={t('session.bulk.archive')}
+                description={t('session.bulk.confirmArchive', { count: bulkConfirm?.ids.length ?? 0 })}
+                confirmLabel={t('session.bulk.archive')}
+                confirmingLabel={t('session.bulk.archive') + '…'}
+                isPending={bulkLoading}
+                onConfirm={handleBulkArchive}
+                onClose={() => setBulkConfirm(null)}
+            />
+        </div>
+    )
+}
+
+function ProjectGroupContextMenu(props: {
+    anchor: { x: number; y: number }
+    onBatchManage: () => void
+    onClose: () => void
+}) {
+    const { t } = useTranslation()
+    const menuRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        const handlePointerDown = (e: PointerEvent) => {
+            if (menuRef.current?.contains(e.target as Node)) return
+            props.onClose()
+        }
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') props.onClose()
+        }
+        document.addEventListener('pointerdown', handlePointerDown)
+        document.addEventListener('keydown', handleKeyDown)
+        return () => {
+            document.removeEventListener('pointerdown', handlePointerDown)
+            document.removeEventListener('keydown', handleKeyDown)
+        }
+    }, [props.onClose]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    return (
+        <div
+            ref={menuRef}
+            className="fixed z-50 min-w-[160px] rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)] p-1 shadow-lg animate-menu-pop"
+            style={{ top: props.anchor.y + 4, left: props.anchor.x }}
+        >
+            <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--app-subtle-bg)] focus-visible:outline-none"
+                onClick={props.onBatchManage}
+            >
+                {t('session.bulk.manage')}
+            </button>
         </div>
     )
 }

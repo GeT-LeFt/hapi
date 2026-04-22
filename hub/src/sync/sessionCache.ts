@@ -148,6 +148,8 @@ export class SessionCache {
             model: stored.model,
             modelReasoningEffort: stored.modelReasoningEffort,
             effort: stored.effort,
+            pinned: stored.pinned,
+            pinnedAt: stored.pinnedAt,
             permissionMode: existing?.permissionMode,
             collaborationMode: existing?.collaborationMode
         }
@@ -447,6 +449,18 @@ export class SessionCache {
             ? (session.metadata as Record<string, unknown>).machineId as string | undefined
             : undefined
         this.onSessionDeleted?.(sessionId, machineId)
+    }
+
+    async pinSession(sessionId: string, pinned: boolean): Promise<void> {
+        const session = this.sessions.get(sessionId)
+        if (!session) {
+            throw new Error('Session not found')
+        }
+        const stored = this.store.sessions.setSessionPinned(sessionId, session.namespace, pinned)
+        if (!stored) {
+            throw new Error('Failed to pin session')
+        }
+        this.refreshSession(sessionId)
     }
 
     async mergeSessions(oldSessionId: string, newSessionId: string, namespace: string): Promise<void> {

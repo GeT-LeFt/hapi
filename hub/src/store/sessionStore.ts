@@ -11,6 +11,7 @@ import {
     setSessionEffort,
     setSessionModel,
     setSessionModelReasoningEffort,
+    setSessionPinned,
     setSessionTeamState,
     setSessionTodos,
     updateSessionAgentState,
@@ -98,5 +99,9 @@ export class SessionStore {
 
     deleteSession(id: string, namespace: string): boolean {
         return deleteSession(this.db, id, namespace)
+    }
+
+    setSessionPinned(id: string, namespace: string, pinned: boolean): StoredSession | null {
+        return setSessionPinned(this.db, id, namespace, pinned)
     }
 }

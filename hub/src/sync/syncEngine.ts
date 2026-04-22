@@ -356,6 +356,38 @@ export class SyncEngine {
         await this.sessionCache.deleteSession(sessionId)
     }
 
+    async pinSession(sessionId: string, pinned: boolean): Promise<void> {
+        await this.sessionCache.pinSession(sessionId, pinned)
+    }
+
+    async bulkDeleteSessions(sessionIds: string[]): Promise<{ deleted: string[]; failures: { id: string; reason: string }[] }> {
+        const deleted: string[] = []
+        const failures: { id: string; reason: string }[] = []
+        for (const id of sessionIds) {
+            try {
+                await this.sessionCache.deleteSession(id)
+                deleted.push(id)
+            } catch (error) {
+                failures.push({ id, reason: error instanceof Error ? error.message : 'unknown' })
+            }
+        }
+        return { deleted, failures }
+    }
+
+    async bulkArchiveSessions(sessionIds: string[]): Promise<{ archived: string[]; failures: { id: string; reason: string }[] }> {
+        const archived: string[] = []
+        const failures: { id: string; reason: string }[] = []
+        for (const id of sessionIds) {
+            try {
+                await this.archiveSession(id)
+                archived.push(id)
+            } catch (error) {
+                failures.push({ id, reason: error instanceof Error ? error.message : 'unknown' })
+            }
+        }
+        return { archived, failures }
+    }
+
     async applySessionConfig(
         sessionId: string,
         config: {

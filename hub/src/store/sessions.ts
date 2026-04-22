@@ -23,6 +23,8 @@ type DbSessionRow = {
     todos_updated_at: number | null
     team_state: string | null
     team_state_updated_at: number | null
+    pinned: number
+    pinned_at: number | null
     active: number
     active_at: number | null
     seq: number
@@ -47,6 +49,8 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         todosUpdatedAt: row.todos_updated_at,
         teamState: safeJsonParse(row.team_state),
         teamStateUpdatedAt: row.team_state_updated_at,
+        pinned: row.pinned === 1,
+        pinnedAt: row.pinned_at,
         active: row.active === 1,
         activeAt: row.active_at,
         seq: row.seq
@@ -371,4 +375,17 @@ export function deleteSession(db: Database, id: string, namespace: string): bool
         'DELETE FROM sessions WHERE id = ? AND namespace = ?'
     ).run(id, namespace)
     return result.changes > 0
+}
+
+export function setSessionPinned(db: Database, id: string, namespace: string, pinned: boolean): StoredSession | null {
+    const now = Date.now()
+    const result = db.prepare(`
+        UPDATE sessions
+        SET pinned = @pinned,
+            pinned_at = CASE WHEN @pinned = 1 THEN @now ELSE NULL END,
+            seq = seq + 1
+        WHERE id = @id AND namespace = @namespace
+    `).run({ id, namespace, pinned: pinned ? 1 : 0, now })
+    if (result.changes === 0) return null
+    return getSessionByNamespace(db, id, namespace)
 }

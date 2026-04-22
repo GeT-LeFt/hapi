@@ -68,7 +68,19 @@ export default {
   'session.action.rename': '重命名',
   'session.action.archive': '归档',
   'session.action.delete': '删除',
+  'session.action.pin': '置顶',
+  'session.action.unpin': '取消置顶',
   'session.action.copy': '复制',
+
+  // Bulk actions
+  'session.bulk.manage': '批量管理',
+  'session.bulk.selectAll': '全选',
+  'session.bulk.cancel': '取消',
+  'session.bulk.selected': '已选 {count} 个',
+  'session.bulk.delete': '删除',
+  'session.bulk.archive': '归档',
+  'session.bulk.confirmDelete': '确定删除选中的 {count} 个会话？此操作不可恢复。',
+  'session.bulk.confirmArchive': '确定归档选中的 {count} 个会话？',
 
   // Dialogs
   'dialog.rename.title': '重命名会话',

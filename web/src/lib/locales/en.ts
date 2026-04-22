@@ -68,7 +68,19 @@ export default {
   'session.action.rename': 'Rename',
   'session.action.archive': 'Archive',
   'session.action.delete': 'Delete',
+  'session.action.pin': 'Pin',
+  'session.action.unpin': 'Unpin',
   'session.action.copy': 'Copy',
+
+  // Bulk actions
+  'session.bulk.manage': 'Batch manage',
+  'session.bulk.selectAll': 'Select all',
+  'session.bulk.cancel': 'Cancel',
+  'session.bulk.selected': '{count} selected',
+  'session.bulk.delete': 'Delete',
+  'session.bulk.archive': 'Archive',
+  'session.bulk.confirmDelete': 'Delete {count} sessions? This cannot be undone.',
+  'session.bulk.confirmArchive': 'Archive {count} sessions?',
 
   // Dialogs
   'dialog.rename.title': 'Rename Session',

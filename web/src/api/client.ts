@@ -460,6 +460,27 @@ export class ApiClient {
         })
     }
 
+    async pinSession(sessionId: string, pinned: boolean): Promise<void> {
+        await this.request(`/api/sessions/${encodeURIComponent(sessionId)}/pin`, {
+            method: 'POST',
+            body: JSON.stringify({ pinned })
+        })
+    }
+
+    async bulkDeleteSessions(ids: string[]): Promise<{ deleted: string[]; failures: { id: string; reason: string }[] }> {
+        return this.request('/api/sessions/bulk-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids })
+        })
+    }
+
+    async bulkArchiveSessions(ids: string[]): Promise<{ archived: string[]; failures: { id: string; reason: string }[] }> {
+        return this.request('/api/sessions/bulk-archive', {
+            method: 'POST',
+            body: JSON.stringify({ ids })
+        })
+    }
+
     async getLlmUsage(): Promise<{
         data: {
             updated: string

@@ -67,17 +67,22 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const namespace = c.get('namespace')
         const sessions = engine.getSessionsByNamespace(namespace)
             .sort((a, b) => {
-                // Active sessions first
+                const aPinned = a.pinned ? 1 : 0
+                const bPinned = b.pinned ? 1 : 0
+                if (aPinned !== bPinned) {
+                    return bPinned - aPinned
+                }
+                if (aPinned && bPinned) {
+                    return (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)
+                }
                 if (a.active !== b.active) {
                     return a.active ? -1 : 1
                 }
-                // Within active sessions, sort by pending requests count
                 const aPending = getPendingCount(a)
                 const bPending = getPendingCount(b)
                 if (a.active && aPending !== bPending) {
                     return bPending - aPending
                 }
-                // Then by updatedAt
                 return b.updatedAt - a.updatedAt
             })
             .map(toSessionSummary)
@@ -500,6 +505,59 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             }
             return c.json({ error: message }, 500)
         }
+    })
+
+    app.post('/sessions/:id/pin', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const body = await c.req.json<{ pinned?: boolean }>()
+        const pinned = body.pinned ?? true
+
+        try {
+            await engine.pinSession(sessionResult.sessionId, pinned)
+            return c.json({ ok: true })
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to pin session'
+            return c.json({ error: message }, 500)
+        }
+    })
+
+    app.post('/sessions/bulk-delete', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const body = await c.req.json<{ ids?: string[] }>()
+        if (!Array.isArray(body.ids) || body.ids.length === 0) {
+            return c.json({ error: 'ids array is required' }, 400)
+        }
+
+        const result = await engine.bulkDeleteSessions(body.ids)
+        return c.json(result)
+    })
+
+    app.post('/sessions/bulk-archive', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const body = await c.req.json<{ ids?: string[] }>()
+        if (!Array.isArray(body.ids) || body.ids.length === 0) {
+            return c.json({ error: 'ids array is required' }, 400)
+        }
+
+        const result = await engine.bulkArchiveSessions(body.ids)
+        return c.json(result)
     })
 
     app.get('/sessions/:id/slash-commands', async (c) => {

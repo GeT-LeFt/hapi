@@ -81,7 +81,7 @@ export function SessionHeader(props: {
     const [archiveOpen, setArchiveOpen] = useState(false)
     const [deleteOpen, setDeleteOpen] = useState(false)
 
-    const { archiveSession, renameSession, deleteSession, isPending } = useSessionActions(
+    const { archiveSession, renameSession, deleteSession, pinSession, isPending } = useSessionActions(
         api,
         session.id,
         session.metadata?.flavor ?? null
@@ -182,7 +182,9 @@ export function SessionHeader(props: {
                 isOpen={menuOpen}
                 onClose={() => setMenuOpen(false)}
                 sessionActive={session.active}
+                sessionPinned={session.pinned ?? false}
                 onRename={() => setRenameOpen(true)}
+                onPin={() => pinSession(!(session.pinned ?? false))}
                 onArchive={() => setArchiveOpen(true)}
                 onDelete={() => setDeleteOpen(true)}
                 anchorPoint={menuAnchorPoint}
