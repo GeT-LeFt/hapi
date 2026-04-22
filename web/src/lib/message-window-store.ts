@@ -379,14 +379,15 @@ export async function fetchLatestMessages(api: ApiClient, sessionId: string): Pr
     // can flip atBottom to false, causing server messages to land in "pending"
     // instead of being rendered directly.
     const wasAtBottom = initial.atBottom
-    console.log('[STORE] fetchLatestMessages START', sessionId.slice(0, 8), 'wasAtBottom=', wasAtBottom, 'msgs=', initial.messages.length, 'pending=', initial.pending.length)
+    const isFirstLoad = initial.messages.length === 0 && initial.pending.length === 0
+    console.log('[STORE] fetchLatestMessages START', sessionId.slice(0, 8), 'wasAtBottom=', wasAtBottom, 'isFirstLoad=', isFirstLoad, 'msgs=', initial.messages.length, 'pending=', initial.pending.length)
     updateState(sessionId, (prev) => buildState(prev, { isLoading: true, warning: null }))
 
     try {
         const response = await api.getMessages(sessionId, { limit: PAGE_SIZE, beforeSeq: null })
         updateState(sessionId, (prev) => {
-            console.log('[STORE] fetchLatestMessages RESOLVE', sessionId.slice(0, 8), 'wasAtBottom=', wasAtBottom, 'prev.atBottom=', prev.atBottom, 'responseMsgs=', response.messages.length, 'prevMsgs=', prev.messages.length, 'prevPending=', prev.pending.length)
-            if (wasAtBottom || prev.atBottom) {
+            console.log('[STORE] fetchLatestMessages RESOLVE', sessionId.slice(0, 8), 'wasAtBottom=', wasAtBottom, 'isFirstLoad=', isFirstLoad, 'prev.atBottom=', prev.atBottom, 'responseMsgs=', response.messages.length, 'prevMsgs=', prev.messages.length, 'prevPending=', prev.pending.length)
+            if (wasAtBottom || prev.atBottom || isFirstLoad) {
                 const merged = mergeMessages(prev.messages, [...prev.pending, ...response.messages])
                 const trimmed = trimVisible(merged, 'append')
                 return buildState(prev, {
