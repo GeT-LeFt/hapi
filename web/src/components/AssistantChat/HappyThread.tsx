@@ -95,6 +95,7 @@ export function HappyThread(props: {
     const onFlushPendingRef = useRef(props.onFlushPending)
     const forceScrollTokenRef = useRef(props.forceScrollToken)
     const settlingRef = useRef(true)
+    const pendingRestoreRef = useRef<{ scrollTop: number } | null>(null)
 
     // Smart scroll state: autoScroll enabled when user is near bottom
     const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
@@ -203,6 +204,16 @@ export function HappyThread(props: {
         onAtBottomChangeRef.current(true)
         onFlushPendingRef.current()
         forceScrollTokenRef.current = props.forceScrollToken
+        const cached = scrollCache.get(props.sessionId)
+        if (cached && !cached.atBottom) {
+            pendingRestoreRef.current = { scrollTop: cached.scrollTop }
+            atBottomRef.current = false
+            setAutoScrollEnabled(false)
+            onAtBottomChangeRef.current(false)
+        } else {
+            pendingRestoreRef.current = null
+        }
+        scrollCache.delete(props.sessionId)
     }, [props.sessionId])
 
     useEffect(() => {
@@ -292,6 +303,17 @@ export function HappyThread(props: {
             loadLockRef.current = false
             return
         }
+        // Restore cached scroll position on session revisit (only once, after messages render)
+        const restore = pendingRestoreRef.current
+        if (restore) {
+            const messagesEl = viewport.querySelector('.happy-thread-messages')
+            if (messagesEl && messagesEl.children.length > 0) {
+                viewport.scrollTop = restore.scrollTop
+                pendingRestoreRef.current = null
+                settlingRef.current = false
+            }
+            return
+        }
         // Stay pinned to bottom only when the user is already at bottom.
         // Replaces the library's resize-triggered scrollToBottom which ignored user intent.
         if (atBottomRef.current) {
@@ -299,58 +321,19 @@ export function HappyThread(props: {
         }
     }, [props.messagesVersion])
 
-    // Handle scroll restore on session switch / initial mount.
-    // ThreadPrimitive.Messages renders one cycle after messagesVersion changes
-    // (assistant-ui runtime updates via useEffect), so useLayoutEffect on
-    // messagesVersion fires before messages are in the DOM.
-    // Use MutationObserver to detect actual content appearing, then restore
-    // the cached scroll position (or keep pinning to bottom as content streams in).
+    // Scroll restore on session switch is handled in the useLayoutEffect above
+    // (driven by messagesVersion + pendingRestoreRef), which is more reliable than
+    // MutationObserver since it fires exactly when messages are committed to the DOM.
     useEffect(() => {
-        const viewport = viewportRef.current
-        if (!viewport) return
-
-        const messagesEl = viewport.querySelector('.happy-thread-messages')
-        if (!messagesEl) return
-
-        const cached = scrollCache.get(props.sessionId)
-        scrollCache.delete(props.sessionId)
-        const shouldRestore = cached && !cached.atBottom
-
-        if (!shouldRestore) {
-            onFlushPendingRef.current()
+        if (pendingRestoreRef.current) {
+            // Don't flush pending while we're about to restore a non-bottom position
+            return
         }
-
-        let done = false
-
-        const onContent = () => {
-            if (done || messagesEl.children.length === 0) return
-
-            if (shouldRestore) {
-                viewport.scrollTop = cached!.scrollTop
-                atBottomRef.current = false
-                setAutoScrollEnabled(false)
-                onAtBottomChangeRef.current(false)
-                settlingRef.current = false
-                done = true
-            } else {
-                viewport.scrollTop = viewport.scrollHeight
-            }
-        }
-
-        onContent()
-
-        const observer = new MutationObserver(onContent)
-        observer.observe(messagesEl, { childList: true, subtree: true })
-
+        onFlushPendingRef.current()
         const timer = setTimeout(() => {
-            observer.disconnect()
             settlingRef.current = false
-        }, shouldRestore ? 500 : 2000)
-
-        return () => {
-            observer.disconnect()
-            clearTimeout(timer)
-        }
+        }, 2000)
+        return () => clearTimeout(timer)
     }, [])
 
     useEffect(() => {
