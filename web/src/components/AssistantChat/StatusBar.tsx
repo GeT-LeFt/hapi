@@ -11,6 +11,9 @@ import type { ConversationStatus } from '@/realtime/types'
 import { getContextBudgetTokens } from '@/chat/modelConfig'
 import { useTranslation } from '@/lib/use-translation'
 
+import { LlmUsageBadge } from './LlmUsageBadge'
+import type { ApiClient } from '@/api/client'
+
 // Vibing messages for thinking state
 const VIBING_MESSAGES = [
     "Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing",
@@ -116,17 +119,25 @@ function getContextWarning(contextSize: number, maxContextSize: number, t: (key:
     }
 }
 
+function formatTokenCount(n: number): string {
+    if (n >= 1000) return `${Math.round(n / 1000)}K`
+    return String(n)
+}
+
 export function StatusBar(props: {
     active: boolean
     thinking: boolean
     agentState: AgentState | null | undefined
     backgroundTaskCount?: number
     contextSize?: number
+    inputTokens?: number
+    outputTokens?: number
     model?: string | null
     permissionMode?: PermissionMode
     collaborationMode?: CodexCollaborationMode
     agentFlavor?: string | null
     voiceStatus?: ConversationStatus
+    api?: ApiClient | null
 }) {
     const { t } = useTranslation()
     const connectionStatus = useMemo(
@@ -177,9 +188,15 @@ export function StatusBar(props: {
                         {contextWarning.text}
                     </span>
                 ) : null}
+                {props.inputTokens !== undefined && props.outputTokens !== undefined ? (
+                    <span className="text-[10px] tabular-nums text-[var(--app-hint)]">
+                        {formatTokenCount(props.inputTokens)}in/{formatTokenCount(props.outputTokens)}out
+                    </span>
+                ) : null}
             </div>
 
             <div className="flex items-center gap-2">
+                <LlmUsageBadge api={props.api ?? null} />
                 {collaborationModeLabel ? (
                     <span className="text-xs text-blue-500">
                         {collaborationModeLabel}

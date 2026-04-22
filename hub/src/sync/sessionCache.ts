@@ -6,17 +6,24 @@ import { EventPublisher } from './eventPublisher'
 import { extractTodoWriteTodosFromMessageContent, TodosSchema } from './todos'
 import { extractBackgroundTaskDelta } from './backgroundTasks'
 
+export type SessionDeletedCallback = (sessionId: string, machineId: string | undefined) => void
+
 export class SessionCache {
     private readonly sessions: Map<string, Session> = new Map()
     private readonly lastBroadcastAtBySessionId: Map<string, number> = new Map()
     private readonly todoBackfillAttemptedSessionIds: Set<string> = new Set()
     private readonly deduplicateInProgress: Set<string> = new Set()
     private readonly deduplicatePending: Set<string> = new Set()
+    private onSessionDeleted: SessionDeletedCallback | null = null
 
     constructor(
         private readonly store: Store,
         private readonly publisher: EventPublisher
     ) {
+    }
+
+    setOnSessionDeleted(cb: SessionDeletedCallback): void {
+        this.onSessionDeleted = cb
     }
 
     getSessions(): Session[] {
@@ -356,6 +363,37 @@ export class SessionCache {
         this.publisher.emit({ type: 'session-updated', sessionId, data: session })
     }
 
+    syncCurrentMcpProfile(sessionId: string, currentMcpProfile: string): void {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
+            if (!session?.metadata) {
+                return
+            }
+            if (session.metadata.currentMcpProfile === currentMcpProfile) {
+                return
+            }
+
+            const result = this.store.sessions.updateSessionMetadata(
+                sessionId,
+                { ...session.metadata, currentMcpProfile },
+                session.metadataVersion,
+                session.namespace,
+                { touchUpdatedAt: false }
+            )
+
+            if (result.result === 'success') {
+                this.refreshSession(sessionId)
+                return
+            }
+
+            if (result.result === 'error') {
+                throw new Error('Failed to update session MCP profile')
+            }
+
+            this.refreshSession(sessionId)
+        }
+    }
+
     async renameSession(sessionId: string, name: string): Promise<void> {
         const session = this.sessions.get(sessionId)
         if (!session) {
@@ -404,6 +442,11 @@ export class SessionCache {
         this.todoBackfillAttemptedSessionIds.delete(sessionId)
 
         this.publisher.emit({ type: 'session-removed', sessionId, namespace: session.namespace })
+
+        const machineId = (session.metadata && typeof session.metadata === 'object')
+            ? (session.metadata as Record<string, unknown>).machineId as string | undefined
+            : undefined
+        this.onSessionDeleted?.(sessionId, machineId)
     }
 
     async mergeSessions(oldSessionId: string, newSessionId: string, namespace: string): Promise<void> {
@@ -553,6 +596,13 @@ export class SessionCache {
         if (refreshed) {
             this.publisher.emit({ type: 'session-updated', sessionId: newSessionId, data: refreshed })
         }
+        this.lastBroadcastAtBySessionId.delete(oldSessionId)
+        this.todoBackfillAttemptedSessionIds.delete(oldSessionId)
+
+        const oldMachineId = oldStored.machineId ?? undefined
+        this.onSessionDeleted?.(oldSessionId, oldMachineId)
+
+        this.refreshSession(newSessionId)
     }
 
     private mergeSessionMetadata(oldMetadata: unknown | null, newMetadata: unknown | null): unknown | null {

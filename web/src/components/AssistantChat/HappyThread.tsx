@@ -49,6 +49,9 @@ function MessageSkeleton() {
     )
 }
 
+const scrollCache = new Map<string, { scrollTop: number; atBottom: boolean }>()
+const SCROLL_CACHE_MAX = 100
+
 const THREAD_MESSAGE_COMPONENTS = {
     UserMessage: HappyUserMessage,
     AssistantMessage: HappyAssistantMessage,
@@ -91,6 +94,8 @@ export function HappyThread(props: {
     const onAtBottomChangeRef = useRef(props.onAtBottomChange)
     const onFlushPendingRef = useRef(props.onFlushPending)
     const forceScrollTokenRef = useRef(props.forceScrollToken)
+    const settlingRef = useRef(true)
+    const pendingRestoreRef = useRef<{ scrollTop: number } | null>(null)
 
     // Smart scroll state: autoScroll enabled when user is near bottom
     const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
@@ -121,16 +126,25 @@ export function HappyThread(props: {
         const viewport = viewportRef.current
         if (!viewport) return
 
-        const THRESHOLD_PX = 120
+        const BOTTOM_THRESHOLD_PX = 120
+        const TOP_THRESHOLD_PX = 300
 
         const handleScroll = () => {
             const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
-            const isNearBottom = distanceFromBottom < THRESHOLD_PX
+            const isNearBottom = distanceFromBottom < BOTTOM_THRESHOLD_PX
 
             if (isNearBottom) {
                 if (!autoScrollEnabledRef.current) setAutoScrollEnabled(true)
             } else if (autoScrollEnabledRef.current) {
                 setAutoScrollEnabled(false)
+            }
+
+            // During settling (initial mount / session switch), don't flip atBottom
+            // to false — fetchLatestMessages races with the first layout scroll and
+            // would shunt server messages into "pending" if we report away-from-bottom
+            // before content has been positioned.
+            if (settlingRef.current && !isNearBottom) {
+                return
             }
 
             if (isNearBottom !== atBottomRef.current) {
@@ -139,6 +153,11 @@ export function HappyThread(props: {
                 if (isNearBottom) {
                     onFlushPendingRef.current()
                 }
+            }
+
+            // Auto-load older messages when scrolled near top
+            if (viewport.scrollTop < TOP_THRESHOLD_PX) {
+                handleLoadMoreRef.current()
             }
         }
 
@@ -160,12 +179,44 @@ export function HappyThread(props: {
         onFlushPendingRef.current()
     }, [])
 
+    // Save scroll position before unmount so it can be restored on revisit
+    useLayoutEffect(() => {
+        return () => {
+            const viewport = viewportRef.current
+            if (viewport) {
+                const entry = {
+                    scrollTop: viewport.scrollTop,
+                    atBottom: atBottomRef.current
+                }
+                scrollCache.set(props.sessionId, entry)
+                console.log('[SCROLL] save', props.sessionId.slice(0, 8), entry)
+                if (scrollCache.size > SCROLL_CACHE_MAX) {
+                    const oldest = scrollCache.keys().next().value
+                    if (oldest) scrollCache.delete(oldest)
+                }
+            }
+        }
+    }, [props.sessionId])
+
     // Reset state when session changes
     useEffect(() => {
+        settlingRef.current = true
         setAutoScrollEnabled(true)
         atBottomRef.current = true
         onAtBottomChangeRef.current(true)
+        onFlushPendingRef.current()
         forceScrollTokenRef.current = props.forceScrollToken
+        const cached = scrollCache.get(props.sessionId)
+        console.log('[SCROLL] session-change', props.sessionId.slice(0, 8), 'cached=', cached)
+        if (cached && !cached.atBottom) {
+            pendingRestoreRef.current = { scrollTop: cached.scrollTop }
+            atBottomRef.current = false
+            setAutoScrollEnabled(false)
+            onAtBottomChangeRef.current(false)
+        } else {
+            pendingRestoreRef.current = null
+        }
+        scrollCache.delete(props.sessionId)
     }, [props.sessionId])
 
     useEffect(() => {
@@ -243,16 +294,70 @@ export function HappyThread(props: {
     }, [props.hasMoreMessages, props.isLoadingMessages])
 
     useLayoutEffect(() => {
-        const pending = pendingScrollRef.current
         const viewport = viewportRef.current
-        if (!pending || !viewport) {
+        if (!viewport) {
             return
         }
-        const delta = viewport.scrollHeight - pending.scrollHeight
-        viewport.scrollTop = pending.scrollTop + delta
-        pendingScrollRef.current = null
-        loadLockRef.current = false
+        const pending = pendingScrollRef.current
+        if (pending) {
+            const delta = viewport.scrollHeight - pending.scrollHeight
+            viewport.scrollTop = pending.scrollTop + delta
+            pendingScrollRef.current = null
+            loadLockRef.current = false
+            return
+        }
+        // Restore cached scroll position on session revisit.
+        // ThreadPrimitive.Messages hydrates one render after messagesVersion changes,
+        // so children may not yet be in the DOM when this effect fires. Fall back to
+        // a MutationObserver + rAF loop to catch the first real content commit.
+        const restore = pendingRestoreRef.current
+        if (restore) {
+            const messagesEl = viewport.querySelector('.happy-thread-messages')
+            const applyRestore = () => {
+                if (!pendingRestoreRef.current) return false
+                const vp = viewportRef.current
+                const el = vp?.querySelector('.happy-thread-messages')
+                if (!vp || !el || el.children.length === 0) return false
+                vp.scrollTop = pendingRestoreRef.current.scrollTop
+                console.log('[SCROLL] restored to', pendingRestoreRef.current.scrollTop)
+                pendingRestoreRef.current = null
+                settlingRef.current = false
+                return true
+            }
+            if (messagesEl && messagesEl.children.length > 0) {
+                applyRestore()
+                return
+            }
+            // Defer: observe until children appear, then restore
+            const host = messagesEl ?? viewport
+            const observer = new MutationObserver(() => {
+                if (applyRestore()) observer.disconnect()
+            })
+            observer.observe(host, { childList: true, subtree: true })
+            setTimeout(() => observer.disconnect(), 5000)
+            return
+        }
+        // Stay pinned to bottom only when the user is already at bottom.
+        // Replaces the library's resize-triggered scrollToBottom which ignored user intent.
+        if (atBottomRef.current) {
+            viewport.scrollTop = viewport.scrollHeight
+        }
     }, [props.messagesVersion])
+
+    // Scroll restore on session switch is handled in the useLayoutEffect above
+    // (driven by messagesVersion + pendingRestoreRef), which is more reliable than
+    // MutationObserver since it fires exactly when messages are committed to the DOM.
+    useEffect(() => {
+        if (pendingRestoreRef.current) {
+            // Don't flush pending while we're about to restore a non-bottom position
+            return
+        }
+        onFlushPendingRef.current()
+        const timer = setTimeout(() => {
+            settlingRef.current = false
+        }, 2000)
+        return () => clearTimeout(timer)
+    }, [])
 
     useEffect(() => {
         isLoadingMoreRef.current = props.isLoadingMoreMessages
@@ -278,7 +383,7 @@ export function HappyThread(props: {
             onRetryMessage: props.onRetryMessage
         }}>
             <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col relative">
-                <ThreadPrimitive.Viewport asChild autoScroll={autoScrollEnabled}>
+                <ThreadPrimitive.Viewport asChild autoScroll={false}>
                     <div ref={viewportRef} className="app-scroll-y min-h-0 flex-1 overflow-x-hidden">
                         <div className="mx-auto w-full max-w-content min-w-0 p-3">
                             <div ref={topSentinelRef} className="h-px w-full" aria-hidden="true" />

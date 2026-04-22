@@ -372,4 +372,90 @@ describe('normalizeDecryptedMessage', () => {
             prompt: 'Some subagent text'
         })
     })
+
+    it('normalizes summary output with string summary field', () => {
+        const message = makeMessage({
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'summary',
+                    summary: 'This is the compaction summary text.'
+                }
+            }
+        })
+
+        const normalized = normalizeDecryptedMessage(message)
+        expect(normalized).toMatchObject({
+            role: 'agent',
+            isSidechain: false,
+        })
+        if (normalized?.role !== 'agent') throw new Error('Expected agent')
+        expect(normalized.content[0]).toMatchObject({
+            type: 'summary',
+            summary: 'This is the compaction summary text.'
+        })
+    })
+
+    it('normalizes summary output without summary string field (fallback)', () => {
+        const message = makeMessage({
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'summary',
+                    text: 'Fallback summary from text field.'
+                }
+            }
+        })
+
+        const normalized = normalizeDecryptedMessage(message)
+        expect(normalized).toMatchObject({
+            role: 'agent',
+            isSidechain: false,
+        })
+        if (normalized?.role !== 'agent') throw new Error('Expected agent')
+        expect(normalized.content[0]).toMatchObject({
+            type: 'summary',
+            summary: 'Fallback summary from text field.'
+        })
+    })
+
+    it('normalizes summary output with no known text fields (stringify fallback)', () => {
+        const message = makeMessage({
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'summary',
+                    unknownField: 42
+                }
+            }
+        })
+
+        const normalized = normalizeDecryptedMessage(message)
+        expect(normalized).toMatchObject({
+            role: 'agent',
+            isSidechain: false,
+        })
+        if (normalized?.role !== 'agent') throw new Error('Expected agent')
+        expect(normalized.content[0]).toMatchObject({ type: 'summary' })
+        expect((normalized.content[0] as { summary: string }).summary).toContain('summary')
+    })
+
+    it('converts continuation user message to event', () => {
+        const message = makeMessage({
+            role: 'user',
+            content: 'This session is being continued from a previous conversation. The summary below covers the earlier portion of the conversation.'
+        })
+
+        const normalized = normalizeDecryptedMessage(message)
+        expect(normalized).toMatchObject({
+            role: 'event',
+            isSidechain: false,
+            content: {
+                type: 'message'
+            }
+        })
+    })
 })

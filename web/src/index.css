@@ -165,10 +165,10 @@ body {
     opacity: 1;
 }
 
-/* Scale content area to use available space on wide screens */
+/* Widen content area on large screens; track sidebar width so content responds to drag */
 @media (min-width: 1280px) {
     :root {
-        --content-max-w: min(90%, 1200px);
+        --content-max-w: calc((100vw - var(--sidebar-w, 0px) - 4px) * 0.9);
     }
 }
 
@@ -203,6 +203,43 @@ body {
 
 .sidebar-resize-handle[data-dragging] {
     opacity: 0.6;
+}
+
+/* Mobile slide transition between session list and chat detail.
+   On mobile (<1024px), the two panels stack absolutely within the container and
+   slide horizontally via transform. On desktop, these rules don't apply and the
+   original flex layout is preserved. */
+@media (max-width: 1023.98px) {
+    .mobile-slide-container {
+        position: relative;
+        overflow: hidden;
+    }
+    .mobile-slide-panel {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        transform: translate3d(0, 0, 0);
+        backface-visibility: hidden;
+        transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
+        will-change: transform;
+        contain: layout paint;
+        isolation: isolate;
+    }
+    .mobile-slide-panel-left {
+        transform: translate3d(0, 0, 0);
+    }
+    .mobile-slide-panel-left[data-mobile-hidden] {
+        transform: translate3d(-100%, 0, 0);
+        pointer-events: none;
+    }
+    .mobile-slide-panel-right {
+        transform: translate3d(100%, 0, 0);
+        pointer-events: none;
+    }
+    .mobile-slide-panel-right:not([data-mobile-hidden]) {
+        transform: translate3d(0, 0, 0);
+        pointer-events: auto;
+    }
 }
 
 /*

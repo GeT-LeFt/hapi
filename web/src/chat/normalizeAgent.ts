@@ -1,5 +1,5 @@
 import type { AgentEvent, NormalizedAgentContent, NormalizedMessage, ToolResultPermission } from '@/chat/types'
-import { AGENT_MESSAGE_PAYLOAD_TYPE, asNumber, asString, isObject } from '@hapi/protocol'
+import { AGENT_MESSAGE_PAYLOAD_TYPE, asNumber, asString, isObject, safeStringify } from '@hapi/protocol'
 import { isClaudeChatVisibleMessage } from '@hapi/protocol/messages'
 
 function normalizeToolResultPermissions(value: unknown): ToolResultPermission | undefined {
@@ -256,14 +256,19 @@ export function normalizeAgentRecord(
         if (data.type === 'user') {
             return normalizeUserOutput(messageId, localId, createdAt, data, meta)
         }
-        if (data.type === 'summary' && typeof data.summary === 'string') {
+        if (data.type === 'summary') {
+            const summaryText = typeof data.summary === 'string'
+                ? data.summary
+                : typeof data.text === 'string' ? data.text
+                : typeof data.content === 'string' ? data.content
+                : safeStringify(data)
             return {
                 id: messageId,
                 localId,
                 createdAt,
                 role: 'agent',
                 isSidechain: false,
-                content: [{ type: 'summary', summary: data.summary }],
+                content: [{ type: 'summary', summary: summaryText }],
                 meta
             }
         }

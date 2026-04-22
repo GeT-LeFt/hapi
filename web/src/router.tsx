@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
     Navigate,
@@ -29,6 +29,8 @@ import { useSkills } from '@/hooks/queries/useSkills'
 import { useSendMessage } from '@/hooks/mutations/useSendMessage'
 import { queryKeys } from '@/lib/query-keys'
 import { useToast } from '@/lib/toast-context'
+import { useUnread } from '@/lib/unread-context'
+import { useNotification } from '@/lib/notification-context'
 import { useTranslation } from '@/lib/use-translation'
 import { fetchLatestMessages, seedMessageWindowFromSession } from '@/lib/message-window-store'
 import { clearDraftsAfterSend } from '@/lib/clearDraftsAfterSend'
@@ -130,11 +132,21 @@ function SessionsPage() {
     const selectedSessionId = sessionMatch && sessionMatch.sessionId !== 'new' ? sessionMatch.sessionId : null
     const isSessionsIndex = pathname === '/sessions' || pathname === '/sessions/'
     const sidebar = useSidebarResize()
+    const { markRead } = useUnread()
+    const { removeBySession } = useNotification()
+
+    useEffect(() => {
+        if (selectedSessionId) {
+            markRead(selectedSessionId)
+            removeBySession(selectedSessionId)
+        }
+    }, [selectedSessionId, markRead, removeBySession])
 
     return (
-        <div className="flex h-full min-h-0">
+        <div className="mobile-slide-container flex h-full min-h-0 w-full">
             <div
-                className={`${isSessionsIndex ? 'flex' : 'hidden lg:flex'} w-full shrink-0 flex-col bg-[var(--app-bg)]`}
+                data-mobile-hidden={!isSessionsIndex || undefined}
+                className="mobile-slide-panel mobile-slide-panel-left flex w-full shrink-0 flex-col bg-[var(--app-bg)]"
                 style={{ '--sidebar-w': `${sidebar.width}px` } as React.CSSProperties}
             >
                 <div className="bg-[var(--app-bg)] pt-[env(safe-area-inset-top)]">
@@ -193,7 +205,10 @@ function SessionsPage() {
                 onPointerDown={sidebar.onPointerDown}
             />
 
-            <div className={`${isSessionsIndex ? 'hidden lg:flex' : 'flex'} min-w-0 flex-1 flex-col bg-[var(--app-bg)]`}>
+            <div
+                data-mobile-hidden={isSessionsIndex || undefined}
+                className="mobile-slide-panel mobile-slide-panel-right flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]"
+            >
                 <div className="flex-1 min-h-0">
                     <Outlet />
                 </div>
@@ -218,6 +233,7 @@ function SessionPage() {
         session,
         refetch: refetchSession,
     } = useSession(api, sessionId)
+    const { machines } = useMachines(api, true)
     const {
         messages,
         warning: messagesWarning,
@@ -319,6 +335,49 @@ function SessionPage() {
         void refetchMessages()
     }, [refetchMessages, refetchSession])
 
+    const currentMachine = useMemo(() => {
+        const metadata = session?.metadata
+        if (metadata?.machineId) {
+            const exact = machines.find((machine) => machine.id === metadata.machineId)
+            if (exact) {
+                return exact
+            }
+        }
+        if (metadata?.host) {
+            return machines.find((machine) => machine.metadata?.host === metadata.host) ?? null
+        }
+        return null
+    }, [machines, session?.metadata?.host, session?.metadata?.machineId])
+
+    const handleSessionReloaded = useCallback((resolvedSessionId: string) => {
+        void (async () => {
+            if (api) {
+                if (session && resolvedSessionId !== session.id) {
+                    seedMessageWindowFromSession(session.id, resolvedSessionId)
+                    queryClient.setQueryData(queryKeys.session(resolvedSessionId), {
+                        session: { ...session, id: resolvedSessionId }
+                    })
+                }
+                try {
+                    await Promise.all([
+                        queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
+                        queryClient.prefetchQuery({
+                            queryKey: queryKeys.session(resolvedSessionId),
+                            queryFn: () => api.getSession(resolvedSessionId),
+                        }),
+                        fetchLatestMessages(api, resolvedSessionId),
+                    ])
+                } catch {
+                }
+            }
+            navigate({
+                to: '/sessions/$sessionId',
+                params: { sessionId: resolvedSessionId },
+                replace: true
+            })
+        })()
+    }, [api, navigate, queryClient, session])
+
     if (!session) {
         return (
             <div className="flex-1 flex items-center justify-center p-4">
@@ -331,6 +390,7 @@ function SessionPage() {
         <SessionChat
             api={api}
             session={session}
+            machine={currentMachine}
             messages={messages}
             messagesWarning={messagesWarning}
             hasMoreMessages={messagesHasMore}
@@ -341,6 +401,7 @@ function SessionPage() {
             messagesVersion={messagesVersion}
             onBack={goBack}
             onRefresh={refreshSelectedSession}
+            onSessionReloaded={handleSessionReloaded}
             onLoadMore={loadMoreMessages}
             onSend={sendMessage}
             onFlushPending={flushPending}

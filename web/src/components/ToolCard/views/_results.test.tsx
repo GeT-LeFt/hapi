@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractTextFromResult, getMutationResultRenderMode, getToolResultViewComponent } from '@/components/ToolCard/views/_results'
+import { extractTextFromResult, getMutationResultRenderMode, getToolResultViewComponent, extractImageFromContentBlock, extractImagesFromResult } from '@/components/ToolCard/views/_results'
 
 describe('extractTextFromResult', () => {
     it('returns string directly', () => {
@@ -95,5 +95,116 @@ describe('getToolResultViewComponent registry', () => {
         const unknownView = getToolResultViewComponent('SomeUnknownTool')
         // Both should fall back to GenericResultView
         expect(mcpView).toBe(unknownView)
+    })
+})
+
+describe('extractImageFromContentBlock', () => {
+    it('extracts base64 image block', () => {
+        const block = {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' }
+        }
+        const result = extractImageFromContentBlock(block)
+        expect(result).toEqual({
+            mediaType: 'image/png',
+            dataUrl: 'data:image/png;base64,iVBORw0KGgo='
+        })
+    })
+
+    it('returns null for text blocks', () => {
+        expect(extractImageFromContentBlock({ type: 'text', text: 'hello' })).toBeNull()
+    })
+
+    it('returns null for non-object input', () => {
+        expect(extractImageFromContentBlock('string')).toBeNull()
+        expect(extractImageFromContentBlock(null)).toBeNull()
+        expect(extractImageFromContentBlock(undefined)).toBeNull()
+        expect(extractImageFromContentBlock(42)).toBeNull()
+    })
+
+    it('returns null for image block without source', () => {
+        expect(extractImageFromContentBlock({ type: 'image' })).toBeNull()
+    })
+
+    it('returns null for image block with non-base64 source type', () => {
+        const block = {
+            type: 'image',
+            source: { type: 'url', url: 'https://example.com/img.png' }
+        }
+        expect(extractImageFromContentBlock(block)).toBeNull()
+    })
+
+    it('returns null when source fields are wrong types', () => {
+        expect(extractImageFromContentBlock({
+            type: 'image',
+            source: { type: 'base64', media_type: 123, data: 'abc' }
+        })).toBeNull()
+        expect(extractImageFromContentBlock({
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: 123 }
+        })).toBeNull()
+    })
+
+    it('handles jpeg media type', () => {
+        const block = {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQ=' }
+        }
+        const result = extractImageFromContentBlock(block)
+        expect(result).toEqual({
+            mediaType: 'image/jpeg',
+            dataUrl: 'data:image/jpeg;base64,/9j/4AAQ='
+        })
+    })
+})
+
+describe('extractImagesFromResult', () => {
+    const pngBlock = {
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/png', data: 'AAAA' }
+    }
+    const textBlock = { type: 'text', text: 'some text' }
+
+    it('extracts images from content block array', () => {
+        const result = [textBlock, pngBlock]
+        const images = extractImagesFromResult(result)
+        expect(images).toHaveLength(1)
+        expect(images[0].mediaType).toBe('image/png')
+    })
+
+    it('extracts images from object with content array', () => {
+        const result = { content: [textBlock, pngBlock] }
+        const images = extractImagesFromResult(result)
+        expect(images).toHaveLength(1)
+    })
+
+    it('extracts multiple images', () => {
+        const jpgBlock = {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/jpeg', data: 'BBBB' }
+        }
+        const images = extractImagesFromResult([pngBlock, textBlock, jpgBlock])
+        expect(images).toHaveLength(2)
+        expect(images[0].mediaType).toBe('image/png')
+        expect(images[1].mediaType).toBe('image/jpeg')
+    })
+
+    it('returns empty array for null/undefined', () => {
+        expect(extractImagesFromResult(null)).toEqual([])
+        expect(extractImagesFromResult(undefined)).toEqual([])
+    })
+
+    it('returns empty array for plain string', () => {
+        expect(extractImagesFromResult('hello')).toEqual([])
+    })
+
+    it('returns empty array when no image blocks exist', () => {
+        expect(extractImagesFromResult([textBlock])).toEqual([])
+        expect(extractImagesFromResult({ content: [textBlock] })).toEqual([])
+    })
+
+    it('returns empty array for object without content array', () => {
+        expect(extractImagesFromResult({ text: 'hello' })).toEqual([])
+        expect(extractImagesFromResult({ content: 'string' })).toEqual([])
     })
 })

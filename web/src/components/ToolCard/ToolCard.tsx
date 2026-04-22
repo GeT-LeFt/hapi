@@ -23,7 +23,7 @@ import { useTranslation } from '@/lib/use-translation'
 
 const ELAPSED_INTERVAL_MS = 1000
 
-function ElapsedView(props: { from: number; active: boolean }) {
+function ElapsedView(props: { from: number; active: boolean; completedAt: number | null }) {
     const [now, setNow] = useState(() => Date.now())
 
     useEffect(() => {
@@ -32,16 +32,30 @@ function ElapsedView(props: { from: number; active: boolean }) {
         return () => clearInterval(id)
     }, [props.active])
 
-    if (!props.active) return null
+    if (props.active) {
+        const elapsed = (now - props.from) / 1000
+        if (!Number.isFinite(elapsed)) return null
+        return (
+            <span className="font-mono text-xs text-[var(--app-hint)]">
+                {elapsed.toFixed(1)}s
+            </span>
+        )
+    }
 
-    const elapsed = (now - props.from) / 1000
-    if (!Number.isFinite(elapsed)) return null
+    if (props.completedAt) {
+        const duration = (props.completedAt - props.from) / 1000
+        if (!Number.isFinite(duration) || duration <= 0) return null
+        const label = duration < 60
+            ? `${duration.toFixed(1)}s`
+            : `${Math.floor(duration / 60)}m ${Math.round(duration % 60)}s`
+        return (
+            <span className="font-mono text-xs text-[var(--app-hint)]">
+                {label}
+            </span>
+        )
+    }
 
-    return (
-        <span className="font-mono text-xs text-[var(--app-hint)]">
-            {elapsed.toFixed(1)}s
-        </span>
-    )
+    return null
 }
 
 function formatTaskChildLabel(child: ToolCallBlock, metadata: SessionMetadataSummary | null): string {
@@ -335,7 +349,7 @@ function ToolCardInner(props: ToolCardProps) {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                    <ElapsedView from={runningFrom} active={props.block.tool.state === 'running'} />
+                    <ElapsedView from={runningFrom} active={props.block.tool.state === 'running'} completedAt={props.block.tool.completedAt} />
                     <span className={stateColor}>
                         <StatusIcon state={props.block.tool.state} />
                     </span>

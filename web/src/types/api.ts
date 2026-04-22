@@ -30,6 +30,7 @@ export type SessionMetadataSummary = {
     os?: string
     summary?: { text: string; updatedAt: number }
     machineId?: string
+    currentMcpProfile?: string
     tools?: string[]
     flavor?: string | null
     worktree?: WorktreeMetadata
@@ -66,6 +67,8 @@ export type Machine = {
         platform: string
         happyCliVersion: string
         displayName?: string
+        apiProfiles?: string[]
+        mcpProfiles?: string[]
     } | null
     runnerState?: RunnerState | null
 }
@@ -94,6 +97,11 @@ export type MessagesResponse = {
 
 export type MachinesResponse = { machines: Machine[] }
 export type MachinePathsExistsResponse = { exists: Record<string, boolean> }
+export type ReloadMcpProfileResponse = {
+    ok: true
+    sessionId: string
+    currentMcpProfile: string
+}
 
 export type SpawnResponse =
     | { type: 'success'; sessionId: string }
@@ -130,6 +138,17 @@ export type DirectoryEntry = {
 export type ListDirectoryResponse = {
     success: boolean
     entries?: DirectoryEntry[]
+    error?: string
+}
+
+export type CreateDirectoryResponse = {
+    success: boolean
+    error?: string
+}
+
+export type WriteProjectFileResponse = {
+    success: boolean
+    path?: string
     error?: string
 }
 

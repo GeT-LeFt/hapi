@@ -19,6 +19,7 @@ import { createGitRoutes } from './routes/git'
 import { createCliRoutes } from './routes/cli'
 import { createPushRoutes } from './routes/push'
 import { createVoiceRoutes } from './routes/voice'
+import { createLlmUsagePushRoutes, createLlmUsageQueryRoutes } from './routes/llmUsage'
 import type { SSEManager } from '../sse/sseManager'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { Server as BunServer } from 'bun'
@@ -87,8 +88,10 @@ function createWebApp(options: {
 
     app.route('/api', createAuthRoutes(options.jwtSecret, options.store))
     app.route('/api', createBindRoutes(options.jwtSecret, options.store))
+    app.route('/api', createLlmUsagePushRoutes())
 
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
+    app.route('/api', createLlmUsageQueryRoutes())
     app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker))
     app.route('/api', createSessionsRoutes(options.getSyncEngine))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))

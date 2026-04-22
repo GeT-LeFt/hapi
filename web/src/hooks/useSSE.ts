@@ -182,6 +182,7 @@ export function useSSE(options: {
     onDisconnect?: (reason: string) => void
     onError?: (error: unknown) => void
     onToast?: (event: ToastEvent) => void
+    onThinkingDone?: (sessionId: string) => void
 }): { subscriptionId: string | null } {
     const queryClient = useQueryClient()
     const onEventRef = useRef(options.onEvent)
@@ -189,6 +190,7 @@ export function useSSE(options: {
     const onDisconnectRef = useRef(options.onDisconnect)
     const onErrorRef = useRef(options.onError)
     const onToastRef = useRef(options.onToast)
+    const onThinkingDoneRef = useRef(options.onThinkingDone)
     const eventSourceRef = useRef<EventSource | null>(null)
     const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const pendingInvalidationsRef = useRef<{
@@ -221,6 +223,10 @@ export function useSSE(options: {
     useEffect(() => {
         onToastRef.current = options.onToast
     }, [options.onToast])
+
+    useEffect(() => {
+        onThinkingDoneRef.current = options.onThinkingDone
+    }, [options.onThinkingDone])
 
     const subscription = options.subscription ?? {}
 
@@ -352,6 +358,7 @@ export function useSSE(options: {
         }
 
         const upsertSessionSummary = (session: Session) => {
+            let thinkingDone = false
             queryClient.setQueryData<SessionsResponse | undefined>(queryKeys.sessions, (previous) => {
                 if (!previous) {
                     return previous
@@ -361,6 +368,10 @@ export function useSSE(options: {
                 const nextSessions = previous.sessions.slice()
                 const existingIndex = nextSessions.findIndex((item) => item.id === session.id)
                 if (existingIndex >= 0) {
+                    const current = nextSessions[existingIndex]
+                    if (current && current.thinking === true && summary.thinking === false) {
+                        thinkingDone = true
+                    }
                     nextSessions[existingIndex] = summary
                 } else {
                     nextSessions.push(summary)
@@ -368,10 +379,14 @@ export function useSSE(options: {
                 nextSessions.sort(sortSessionSummaries)
                 return { ...previous, sessions: nextSessions }
             })
+            if (thinkingDone) {
+                onThinkingDoneRef.current?.(session.id)
+            }
         }
 
         const patchSessionSummary = (sessionId: string, patch: SessionPatch): boolean => {
             let patched = false
+            let thinkingDone = false
             queryClient.setQueryData<SessionsResponse | undefined>(queryKeys.sessions, (previous) => {
                 if (!previous) {
                     return previous
@@ -386,6 +401,10 @@ export function useSSE(options: {
                 const current = nextSessions[index]
                 if (!current) {
                     return previous
+                }
+
+                if (current.thinking === true && patch.thinking === false) {
+                    thinkingDone = true
                 }
 
                 const nextSummary: SessionSummary = {
@@ -403,6 +422,9 @@ export function useSSE(options: {
                 nextSessions.sort(sortSessionSummaries)
                 return { ...previous, sessions: nextSessions }
             })
+            if (thinkingDone) {
+                onThinkingDoneRef.current?.(sessionId)
+            }
             return patched
         }
 

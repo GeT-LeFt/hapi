@@ -13,6 +13,7 @@ import {
     useState
 } from 'react'
 import type { AgentState, CodexCollaborationMode, PermissionMode } from '@/types/api'
+import type { ApiClient } from '@/api/client'
 import type { Suggestion } from '@/hooks/useActiveSuggestions'
 import type { ConversationStatus } from '@/realtime/types'
 import { useActiveWord } from '@/hooks/useActiveWord'
@@ -54,6 +55,8 @@ export function HappyComposer(props: {
     agentState?: AgentState | null
     backgroundTaskCount?: number
     contextSize?: number
+    inputTokens?: number
+    outputTokens?: number
     controlledByUser?: boolean
     agentFlavor?: string | null
     onCollaborationModeChange?: (mode: CodexCollaborationMode) => void
@@ -71,6 +74,7 @@ export function HappyComposer(props: {
     voiceMicMuted?: boolean
     onVoiceToggle?: () => void
     onVoiceMicToggle?: () => void
+    api?: ApiClient | null
 }) {
     const { t } = useTranslation()
     const {
@@ -87,6 +91,8 @@ export function HappyComposer(props: {
         agentState,
         backgroundTaskCount,
         contextSize,
+        inputTokens,
+        outputTokens,
         controlledByUser = false,
         agentFlavor,
         onCollaborationModeChange,
@@ -102,7 +108,8 @@ export function HappyComposer(props: {
         voiceStatus = 'disconnected',
         voiceMicMuted = false,
         onVoiceToggle,
-        onVoiceMicToggle
+        onVoiceMicToggle,
+        api: hapiApi
     } = props
 
     // Use ?? so missing values fall back to default (destructuring defaults only handle undefined)
@@ -760,11 +767,14 @@ export function HappyComposer(props: {
                         agentState={agentState}
                         backgroundTaskCount={backgroundTaskCount}
                         contextSize={contextSize}
+                        inputTokens={inputTokens}
+                        outputTokens={outputTokens}
                         model={model}
                         permissionMode={permissionMode}
                         collaborationMode={collaborationMode}
                         agentFlavor={agentFlavor}
                         voiceStatus={voiceStatus}
+                        api={hapiApi}
                     />
 
                     <div className="overflow-hidden rounded-[20px] bg-[var(--app-secondary-bg)]">

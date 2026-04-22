@@ -15,6 +15,7 @@ export function useSessionActions(
     abortSession: () => Promise<void>
     archiveSession: () => Promise<void>
     switchSession: () => Promise<void>
+    reloadMcpProfile: (profile: string) => Promise<{ sessionId: string; currentMcpProfile: string }>
     setPermissionMode: (mode: PermissionMode) => Promise<void>
     setCollaborationMode: (mode: CodexCollaborationMode) => Promise<void>
     setModel: (model: string | null) => Promise<void>
@@ -58,6 +59,20 @@ export function useSessionActions(
                 throw new Error('Session unavailable')
             }
             await api.switchSession(sessionId)
+        },
+        onSuccess: () => void invalidateSession(),
+    })
+
+    const reloadMcpMutation = useMutation({
+        mutationFn: async (profile: string) => {
+            if (!api || !sessionId) {
+                throw new Error('Session unavailable')
+            }
+            const response = await api.reloadMcpProfile(sessionId, profile)
+            return {
+                sessionId: response.sessionId,
+                currentMcpProfile: response.currentMcpProfile
+            }
         },
         onSuccess: () => void invalidateSession(),
     })
@@ -156,6 +171,7 @@ export function useSessionActions(
         abortSession: abortMutation.mutateAsync,
         archiveSession: archiveMutation.mutateAsync,
         switchSession: switchMutation.mutateAsync,
+        reloadMcpProfile: reloadMcpMutation.mutateAsync,
         setPermissionMode: permissionMutation.mutateAsync,
         setCollaborationMode: collaborationMutation.mutateAsync,
         setModel: modelMutation.mutateAsync,
@@ -166,6 +182,7 @@ export function useSessionActions(
         isPending: abortMutation.isPending
             || archiveMutation.isPending
             || switchMutation.isPending
+            || reloadMcpMutation.isPending
             || permissionMutation.isPending
             || collaborationMutation.isPending
             || modelMutation.isPending

@@ -57,6 +57,12 @@ export default {
   // Session header
   'session.title': 'Files',
   'session.more': 'More actions',
+  'session.mcp.label': 'MCP Profile',
+  'session.mcp.current': 'Current: {profile}',
+  'session.mcp.currentUnknown': 'Current: unknown',
+  'session.mcp.switch': 'Switch',
+  'session.mcp.switching': 'Switching…',
+  'session.mcp.failed.title': 'MCP reload failed',
 
   // Session actions
   'session.action.rename': 'Rename',
@@ -290,4 +296,8 @@ export default {
   'misc.permissionRequired': 'permission required',
   'misc.percentLeft': '{percent}% left',
   'misc.online': 'online',
+
+  'notifications.title': 'Notifications',
+  'notifications.clearAll': 'Clear all',
+  'notifications.empty': 'No notifications',
 } as const

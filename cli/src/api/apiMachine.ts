@@ -4,6 +4,8 @@
 
 import { io, type Socket } from 'socket.io-client'
 import { stat } from 'node:fs/promises'
+import { cleanupBlobDirBySessionId } from '../modules/common/handlers/uploads'
+import { runBlobGC } from '../modules/common/handlers/blobGc'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
 import type { Update, UpdateMachineBody } from '@hapi/protocol'
@@ -16,6 +18,7 @@ import { registerCommonHandlers } from '../modules/common/registerCommonHandlers
 import type { SpawnSessionOptions, SpawnSessionResult } from '../modules/common/rpcTypes'
 import { applyVersionedAck } from './versionedUpdate'
 import { buildSocketIoExtraHeaderOptions } from './hubExtraHeaders'
+import { switchProfile } from '@/utils/mcpProfile'
 
 interface ServerToRunnerEvents {
     update: (data: Update) => void
@@ -99,11 +102,37 @@ export class ApiMachineClient {
 
             return { exists }
         })
+
+        this.rpcHandlerManager.registerHandler<{ sessionId: string }, { success: boolean }>('cleanupBlobDir', async (params) => {
+            const sessionId = params?.sessionId
+            if (!sessionId) {
+                throw new Error('sessionId is required')
+            }
+            await cleanupBlobDirBySessionId(sessionId)
+            return { success: true }
+        })
+
+        this.rpcHandlerManager.registerHandler<{ profile?: string; mcpJsonPath?: string }, { ok: true; currentMcpProfile: string } | { ok: false; error: string }>('switch-mcp-profile', async (params) => {
+            const profile = typeof params?.profile === 'string' ? params.profile : ''
+            const mcpJsonPath = typeof params?.mcpJsonPath === 'string' ? params.mcpJsonPath : ''
+
+            if (!profile) {
+                return { ok: false, error: 'Invalid profile name' }
+            }
+            if (!mcpJsonPath) {
+                return { ok: false, error: 'Invalid mcpJsonPath' }
+            }
+
+            return switchProfile(mcpJsonPath, profile)
+        })
+
+        void runBlobGC()
+        setInterval(() => void runBlobGC(), 30 * 60 * 1000)
     }
 
     setRPCHandlers({ spawnSession, stopSession, requestShutdown }: MachineRpcHandlers): void {
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, resumeSessionId, machineId, approvedNewDirectoryCreation, agent, model, effort, modelReasoningEffort, yolo, permissionMode, token, sessionType, worktreeName } = params || {}
+            const { directory, sessionId, resumeSessionId, machineId, approvedNewDirectoryCreation, agent, model, effort, modelReasoningEffort, yolo, permissionMode, token, sessionType, worktreeName, apiProfile } = params || {}
 
             if (!directory) {
                 throw new Error('Directory is required')
@@ -123,7 +152,8 @@ export class ApiMachineClient {
                 permissionMode,
                 token,
                 sessionType,
-                worktreeName
+                worktreeName,
+                apiProfile
             })
 
             switch (result.type) {

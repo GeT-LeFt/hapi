@@ -1,5 +1,5 @@
 import { unwrapRoleWrappedRecordEnvelope } from '@hapi/protocol/messages'
-import { safeStringify } from '@hapi/protocol'
+import { isObject, safeStringify } from '@hapi/protocol'
 import type { DecryptedMessage } from '@/types/api'
 import type { NormalizedMessage } from '@/chat/types'
 import { isCodexContent, isSkippableAgentContent, normalizeAgentRecord } from '@/chat/normalizeAgent'
@@ -21,6 +21,22 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
     }
 
     if (record.role === 'user') {
+        const textContent = typeof record.content === 'string'
+            ? record.content
+            : (isObject(record.content) && typeof record.content.text === 'string' ? record.content.text : '')
+        if (textContent.startsWith('This session is being continued from a previous conversation')) {
+            return {
+                id: message.id,
+                localId: message.localId,
+                createdAt: message.createdAt,
+                role: 'event',
+                isSidechain: false,
+                content: { type: 'message', message: textContent } as import('@/chat/types').AgentEvent,
+                meta: record.meta,
+                status: message.status,
+                originalText: message.originalText
+            }
+        }
         const normalized = normalizeUserRecord(message.id, message.localId, message.createdAt, record.content, record.meta)
         return normalized
             ? { ...normalized, status: message.status, originalText: message.originalText }

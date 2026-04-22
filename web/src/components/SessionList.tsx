@@ -3,6 +3,7 @@ import type { SessionSummary } from '@/types/api'
 import type { ApiClient } from '@/api/client'
 import { useLongPress } from '@/hooks/useLongPress'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useUnread } from '@/lib/unread-context'
 import { useSessionActions } from '@/hooks/mutations/useSessionActions'
 import { SessionActionMenu } from '@/components/SessionActionMenu'
 import { RenameSessionDialog } from '@/components/RenameSessionDialog'
@@ -352,9 +353,10 @@ function SessionItem(props: {
     showPath?: boolean
     api: ApiClient | null
     selected?: boolean
+    isUnread?: boolean
 }) {
     const { t } = useTranslation()
-    const { session: s, onSelect, showPath = true, api, selected = false } = props
+    const { session: s, onSelect, showPath = true, api, selected = false, isUnread = false } = props
     const { haptic } = usePlatform()
     const [menuOpen, setMenuOpen] = useState(false)
     const [menuAnchorPoint, setMenuAnchorPoint] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -399,9 +401,6 @@ function SessionItem(props: {
                         <div className={`truncate text-sm font-medium ${s.active ? 'text-[var(--app-fg)]' : 'text-[var(--app-hint)]'}`}>
                             {sessionName}
                         </div>
-                        {s.active && s.thinking ? (
-                            <LoaderIcon className="h-3.5 w-3.5 shrink-0 text-[var(--app-hint)] animate-spin-slow" />
-                        ) : null}
                     </div>
                     <div className="flex items-center gap-2 shrink-0 text-xs">
                         {todoProgress ? (
@@ -414,6 +413,11 @@ function SessionItem(props: {
                             <span className="text-[var(--app-badge-warning-text)]">
                                 {t('session.item.pending')} {s.pendingRequestsCount}
                             </span>
+                        ) : null}
+                        {s.active && s.thinking ? (
+                            <LoaderIcon className="h-3.5 w-3.5 shrink-0 text-[var(--app-hint)] animate-spin-slow" />
+                        ) : isUnread ? (
+                            <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shrink-0" />
                         ) : null}
                         <span className="text-[var(--app-hint)]">
                             {formatRelativeTime(s.updatedAt, t)}
@@ -485,6 +489,7 @@ export function SessionList(props: {
 }) {
     const { t } = useTranslation()
     const { renderHeader = true, api, selectedSessionId, machineLabelsById = {} } = props
+    const { unreadSessionIds } = useUnread()
     const groups = useMemo(
         () => groupSessionsByDirectory(deduplicateSessionsByAgentId(props.sessions, selectedSessionId)),
         [props.sessions, selectedSessionId]
@@ -660,6 +665,7 @@ export function SessionList(props: {
                                                                 showPath={false}
                                                                 api={api}
                                                                 selected={s.id === selectedSessionId}
+                                                                isUnread={unreadSessionIds.has(s.id)}
                                                             />
                                                         ))}
                                                     </div>

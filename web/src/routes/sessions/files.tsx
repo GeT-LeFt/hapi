@@ -11,6 +11,9 @@ import { useSessionFileSearch } from '@/hooks/queries/useSessionFileSearch'
 import { encodeBase64 } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
 import { useQueryClient } from '@tanstack/react-query'
+import { downloadFileFromApi } from '@/lib/downloadFile'
+import { useCreateDirectory } from '@/hooks/mutations/useCreateDirectory'
+import { useWriteProjectFile } from '@/hooks/mutations/useWriteProjectFile'
 
 function BackIcon(props: { className?: string }) {
     return (
@@ -277,6 +280,35 @@ export default function FilesPage() {
         return parts.length ? parts[parts.length - 1] : base
     }, [session?.metadata?.path, sessionId])
 
+    const { createDirectory } = useCreateDirectory(api, sessionId)
+    const { writeProjectFile } = useWriteProjectFile(api, sessionId)
+
+    const handleDownloadFile = useCallback(async (path: string, fileName: string) => {
+        if (!api) return
+        await downloadFileFromApi(api, sessionId, path, fileName)
+    }, [api, sessionId])
+
+    const handleCreateFolder = useCallback(async (parentPath: string, folderName: string) => {
+        const fullPath = parentPath ? `${parentPath}/${folderName}` : folderName
+        await createDirectory(fullPath)
+    }, [createDirectory])
+
+    const handleUploadFile = useCallback(async (parentPath: string, file: File) => {
+        const MAX_SIZE = 50 * 1024 * 1024
+        if (file.size > MAX_SIZE) {
+            throw new Error('File size exceeds 50MB limit')
+        }
+        const buffer = await file.arrayBuffer()
+        const bytes = new Uint8Array(buffer)
+        let binary = ''
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i])
+        }
+        const content = btoa(binary)
+        const filePath = parentPath ? `${parentPath}/${file.name}` : file.name
+        await writeProjectFile({ path: filePath, content })
+    }, [writeProjectFile])
+
     const handleRefresh = useCallback(() => {
         if (searchQuery) {
             void queryClient.invalidateQueries({
@@ -424,6 +456,9 @@ export default function FilesPage() {
                             sessionId={sessionId}
                             rootLabel={rootLabel}
                             onOpenFile={(path) => handleOpenFile(path)}
+                            onDownloadFile={handleDownloadFile}
+                            onCreateFolder={handleCreateFolder}
+                            onUploadFile={handleUploadFile}
                         />
                     ) : gitLoading ? (
                         <FileListSkeleton label="Loading Git status…" />

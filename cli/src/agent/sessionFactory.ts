@@ -12,6 +12,8 @@ import { logger } from '@/ui/logger'
 import { runtimePath } from '@/projectPath'
 import { getInvokedCwd } from '@/utils/invokedCwd'
 import { readWorktreeEnv } from '@/utils/worktreeEnv'
+import { discoverApiProfiles } from '@/utils/apiProfiles'
+import { findMcpJsonPath, listProfiles, resolveCurrentProfile } from '@/utils/mcpProfile'
 import packageJson from '../../package.json'
 
 export type SessionStartedBy = 'runner' | 'terminal'
@@ -45,7 +47,9 @@ export function buildMachineMetadata(): MachineMetadata {
         happyCliVersion: packageJson.version,
         homeDir: os.homedir(),
         happyHomeDir: configuration.happyHomeDir,
-        happyLibDir: runtimePath()
+        happyLibDir: runtimePath(),
+        apiProfiles: discoverApiProfiles(),
+        mcpProfiles: listProfiles()
     }
 }
 
@@ -60,6 +64,7 @@ export function buildSessionMetadata(options: {
     const happyLibDir = runtimePath()
     const worktreeInfo = readWorktreeEnv()
     const now = options.now ?? Date.now()
+    const mcpJsonPath = findMcpJsonPath(options.workingDirectory)
 
     return {
         path: options.workingDirectory,
@@ -76,6 +81,8 @@ export function buildSessionMetadata(options: {
         startedBy: options.startedBy,
         lifecycleState: 'running',
         lifecycleStateSince: now,
+        mcpJsonPath: mcpJsonPath ?? undefined,
+        currentMcpProfile: resolveCurrentProfile(mcpJsonPath) ?? undefined,
         flavor: options.flavor,
         worktree: worktreeInfo ?? undefined,
         ...options.metadataOverrides

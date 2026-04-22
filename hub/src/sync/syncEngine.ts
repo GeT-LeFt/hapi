@@ -18,11 +18,13 @@ import { MessageService } from './messageService'
 import {
     RpcGateway,
     type RpcCommandResponse,
+    type RpcCreateDirectoryResponse,
     type RpcDeleteUploadResponse,
     type RpcListDirectoryResponse,
     type RpcPathExistsResponse,
     type RpcReadFileResponse,
-    type RpcUploadFileResponse
+    type RpcUploadFileResponse,
+    type RpcWriteProjectFileResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
 
@@ -31,16 +33,48 @@ export type { Machine } from './machineCache'
 export type { SyncEventListener } from './eventPublisher'
 export type {
     RpcCommandResponse,
+    RpcCreateDirectoryResponse,
     RpcDeleteUploadResponse,
     RpcListDirectoryResponse,
     RpcPathExistsResponse,
     RpcReadFileResponse,
-    RpcUploadFileResponse
+    RpcUploadFileResponse,
+    RpcWriteProjectFileResponse
 } from './rpcGateway'
 
 export type ResumeSessionResult =
     | { type: 'success'; sessionId: string }
-    | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'no_machine_online' | 'resume_unavailable' | 'resume_failed' }
+    | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'no_machine_online' | 'resume_unavailable' | 'resume_failed' | 'resume_timeout' }
+
+export type McpReloadProgressStep =
+    | 'rpc-sent'
+    | 'rpc-acked'
+    | 'aborting'
+    | 'inactive'
+    | 'resuming'
+    | 'active'
+    | 'merged'
+
+export type ReloadMcpProfileResult =
+    | { type: 'success'; sessionId: string; currentMcpProfile: string }
+    | {
+        type: 'error'
+        message: string
+        code:
+        | 'session_not_found'
+        | 'access_denied'
+        | 'session_inactive'
+        | 'not_supported'
+        | 'missing_mcp_json_path'
+        | 'no_machine_online'
+        | 'invalid_profile_name'
+        | 'profile_not_found'
+        | 'locked'
+        | 'switch_failed'
+        | 'abort_timeout'
+        | 'resume_timeout'
+        | 'resume_failed'
+    }
 
 export class SyncEngine {
     private readonly eventPublisher: EventPublisher
@@ -49,6 +83,7 @@ export class SyncEngine {
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
     private inactivityTimer: NodeJS.Timeout | null = null
+    private readonly reloadingSessions: Set<string> = new Set()
 
     constructor(
         store: Store,
@@ -61,6 +96,13 @@ export class SyncEngine {
         this.machineCache = new MachineCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
+
+        this.sessionCache.setOnSessionDeleted((sessionId, machineId) => {
+            if (machineId) {
+                this.rpcGateway.cleanupSessionBlobs(machineId, sessionId).catch(() => {})
+            }
+        })
+
         this.reloadAll()
         this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
     }
@@ -345,6 +387,156 @@ export class SyncEngine {
         this.sessionCache.applySessionConfig(sessionId, applied)
     }
 
+    private emitMcpReloadProgress(
+        sessionId: string,
+        namespace: string,
+        step: McpReloadProgressStep,
+        profile?: string,
+        currentMcpProfile?: string
+    ): void {
+        this.eventPublisher.emit({
+            type: 'mcp-reload-progress',
+            sessionId,
+            namespace,
+            step,
+            profile,
+            currentMcpProfile
+        })
+    }
+
+    private resolveTargetMachineFromMetadata(
+        metadata: Pick<NonNullable<Session['metadata']>, 'machineId' | 'host'>,
+        namespace: string
+    ): Machine | null {
+        const onlineMachines = this.machineCache.getOnlineMachinesByNamespace(namespace)
+        if (onlineMachines.length === 0) {
+            return null
+        }
+
+        if (metadata.machineId) {
+            const exact = onlineMachines.find((machine) => machine.id === metadata.machineId)
+            if (exact) {
+                return exact
+            }
+        }
+
+        if (metadata.host) {
+            const hostMatch = onlineMachines.find((machine) => machine.metadata?.host === metadata.host)
+            if (hostMatch) {
+                return hostMatch
+            }
+        }
+
+        return null
+    }
+
+    async reloadMcpProfile(sessionId: string, namespace: string, profile: string): Promise<ReloadMcpProfileResult> {
+        const access = this.sessionCache.resolveSessionAccess(sessionId, namespace)
+        if (!access.ok) {
+            return {
+                type: 'error',
+                message: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found',
+                code: access.reason === 'access-denied' ? 'access_denied' : 'session_not_found'
+            }
+        }
+
+        if (this.reloadingSessions.has(access.sessionId)) {
+            return { type: 'error', message: 'Reload already in progress', code: 'locked' }
+        }
+
+        const session = access.session
+        if (!session.active) {
+            return { type: 'error', message: 'Session is inactive', code: 'session_inactive' }
+        }
+
+        const metadata = session.metadata
+        if (!metadata) {
+            return { type: 'error', message: 'Session metadata missing mcpJsonPath', code: 'missing_mcp_json_path' }
+        }
+
+        if (metadata.flavor !== 'claude') {
+            return { type: 'error', message: 'MCP reload is only supported for Claude sessions', code: 'not_supported' }
+        }
+
+        if (typeof metadata.mcpJsonPath !== 'string' || metadata.mcpJsonPath.length === 0) {
+            return { type: 'error', message: 'Session metadata missing mcpJsonPath', code: 'missing_mcp_json_path' }
+        }
+
+        const targetMachine = this.resolveTargetMachineFromMetadata(metadata, namespace)
+        if (!targetMachine) {
+            return { type: 'error', message: 'No machine online', code: 'no_machine_online' }
+        }
+
+        this.reloadingSessions.add(access.sessionId)
+        let stage: 'switch' | 'abort' | 'resume' = 'switch'
+        try {
+            this.emitMcpReloadProgress(access.sessionId, namespace, 'rpc-sent', profile)
+            const switchResult = await this.rpcGateway.switchMcpProfile(targetMachine.id, {
+                profile,
+                mcpJsonPath: metadata.mcpJsonPath
+            })
+
+            if (!switchResult.ok) {
+                if (switchResult.error === 'Invalid profile name') {
+                    return { type: 'error', message: switchResult.error, code: 'invalid_profile_name' }
+                }
+                if (switchResult.error === 'Profile not found') {
+                    return { type: 'error', message: switchResult.error, code: 'profile_not_found' }
+                }
+                return { type: 'error', message: switchResult.error, code: 'switch_failed' }
+            }
+
+            this.emitMcpReloadProgress(access.sessionId, namespace, 'rpc-acked', profile, switchResult.currentMcpProfile)
+            try {
+                this.sessionCache.syncCurrentMcpProfile(access.sessionId, switchResult.currentMcpProfile)
+            } catch {
+                // Best-effort cache sync; the resumed session will publish fresh metadata on success.
+            }
+            this.emitMcpReloadProgress(access.sessionId, namespace, 'aborting', profile, switchResult.currentMcpProfile)
+            stage = 'abort'
+            await this.abortSession(access.sessionId)
+
+            const becameInactive = await this.waitForSessionInactive(access.sessionId, 10_000)
+            if (!becameInactive) {
+                return { type: 'error', message: 'Abort timeout', code: 'abort_timeout' }
+            }
+
+            this.emitMcpReloadProgress(access.sessionId, namespace, 'inactive', profile, switchResult.currentMcpProfile)
+            this.emitMcpReloadProgress(access.sessionId, namespace, 'resuming', profile, switchResult.currentMcpProfile)
+
+            stage = 'resume'
+            const resumed = await this.resumeSession(access.sessionId, namespace)
+            if (resumed.type === 'error') {
+                if (resumed.code === 'resume_timeout') {
+                    return { type: 'error', message: 'Resume timeout', code: 'resume_timeout' }
+                }
+                return { type: 'error', message: resumed.message, code: 'resume_failed' }
+            }
+
+            this.emitMcpReloadProgress(resumed.sessionId, namespace, 'active', profile, switchResult.currentMcpProfile)
+            if (resumed.sessionId !== access.sessionId) {
+                this.emitMcpReloadProgress(resumed.sessionId, namespace, 'merged', profile, switchResult.currentMcpProfile)
+            }
+
+            return {
+                type: 'success',
+                sessionId: resumed.sessionId,
+                currentMcpProfile: switchResult.currentMcpProfile
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            if (stage === 'resume') {
+                return { type: 'error', message, code: 'resume_failed' }
+            }
+            if (stage === 'abort') {
+                return { type: 'error', message, code: 'switch_failed' }
+            }
+            return { type: 'error', message, code: 'switch_failed' }
+        } finally {
+            this.reloadingSessions.delete(access.sessionId)
+        }
+    }
+
     async spawnSession(
         machineId: string,
         directory: string,
@@ -356,7 +548,8 @@ export class SyncEngine {
         worktreeName?: string,
         resumeSessionId?: string,
         effort?: string,
-        permissionMode?: PermissionMode
+        permissionMode?: PermissionMode,
+        apiProfile?: string
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
         return await this.rpcGateway.spawnSession(
             machineId,
@@ -369,7 +562,8 @@ export class SyncEngine {
             worktreeName,
             resumeSessionId,
             effort,
-            permissionMode
+            permissionMode,
+            apiProfile
         )
     }
 
@@ -410,23 +604,7 @@ export class SyncEngine {
             return { type: 'error', message: 'Resume session ID unavailable', code: 'resume_unavailable' }
         }
 
-        const onlineMachines = this.machineCache.getOnlineMachinesByNamespace(namespace)
-        if (onlineMachines.length === 0) {
-            return { type: 'error', message: 'No machine online', code: 'no_machine_online' }
-        }
-
-        const targetMachine = (() => {
-            if (metadata.machineId) {
-                const exact = onlineMachines.find((machine) => machine.id === metadata.machineId)
-                if (exact) return exact
-            }
-            if (metadata.host) {
-                const hostMatch = onlineMachines.find((machine) => machine.metadata?.host === metadata.host)
-                if (hostMatch) return hostMatch
-            }
-            return null
-        })()
-
+        const targetMachine = this.resolveTargetMachineFromMetadata(metadata, namespace)
         if (!targetMachine) {
             return { type: 'error', message: 'No machine online', code: 'no_machine_online' }
         }
@@ -451,7 +629,7 @@ export class SyncEngine {
 
         const becameActive = await this.waitForSessionActive(spawnResult.sessionId)
         if (!becameActive) {
-            return { type: 'error', message: 'Session failed to become active', code: 'resume_failed' }
+            return { type: 'error', message: 'Session failed to become active', code: 'resume_timeout' }
         }
 
         if (spawnResult.sessionId !== access.sessionId) {
@@ -504,6 +682,18 @@ export class SyncEngine {
         return false
     }
 
+    async waitForSessionInactive(sessionId: string, timeoutMs: number = 10_000): Promise<boolean> {
+        const start = Date.now()
+        while (Date.now() - start < timeoutMs) {
+            const session = this.getSession(sessionId)
+            if (session && !session.active) {
+                return true
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250))
+        }
+        return false
+    }
+
     async checkPathsExist(machineId: string, paths: string[]): Promise<Record<string, boolean>> {
         return await this.rpcGateway.checkPathsExist(machineId, paths)
     }
@@ -526,6 +716,14 @@ export class SyncEngine {
 
     async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
         return await this.rpcGateway.listDirectory(sessionId, path)
+    }
+
+    async createDirectory(sessionId: string, path: string): Promise<RpcCreateDirectoryResponse> {
+        return await this.rpcGateway.createDirectory(sessionId, path)
+    }
+
+    async writeProjectFile(sessionId: string, path: string, content: string, overwrite?: boolean): Promise<RpcWriteProjectFileResponse> {
+        return await this.rpcGateway.writeProjectFile(sessionId, path, content, overwrite)
     }
 
     async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {

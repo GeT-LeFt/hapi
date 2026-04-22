@@ -1,7 +1,7 @@
 import type { AgentState } from '@/types/api'
 import type { ChatBlock, NormalizedMessage, UsageData } from '@/chat/types'
 import { traceMessages, type TracedMessage } from '@/chat/tracer'
-import { dedupeAgentEvents, foldApiErrorEvents } from '@/chat/reducerEvents'
+import { dedupeAgentEvents, foldApiErrorEvents, foldCompactionEvents } from '@/chat/reducerEvents'
 import { collectTitleChanges, collectToolIdsFromMessages, ensureToolBlock, getPermissions } from '@/chat/reducerTools'
 import { reduceTimeline } from '@/chat/reducerTimeline'
 
@@ -60,9 +60,10 @@ export function reduceChatBlocks(
 
         const createdAt = entry.permission.createdAt ?? Date.now()
 
-        // Skip permissions that are older than the oldest message in the current view.
+        // Skip non-pending permissions that are older than the oldest message in the current view.
         // These will be shown when the user loads older messages.
-        if (oldestMessageTime !== null && createdAt < oldestMessageTime) {
+        // Pending permissions are always shown so the user can approve/deny them.
+        if (oldestMessageTime !== null && createdAt < oldestMessageTime && entry.permission.status !== 'pending') {
             continue
         }
 
@@ -90,22 +91,35 @@ export function reduceChatBlocks(
         }
     }
 
-    // Calculate latest usage from messages (find the most recent message with usage data)
+    // inputTokens shows the latest turn's full context (input + cache_read + cache_creation),
+    // matching the CLI's "108Kin" which reflects what was actually sent to the model
+    // (including system prompt, MCP tool definitions, and conversation history).
+    // outputTokens accumulates across all messages in the session.
     let latestUsage: LatestUsage | null = null
-    for (let i = normalized.length - 1; i >= 0; i--) {
-        const msg = normalized[i]
+    let totalOutputTokens = 0
+    let totalCacheCreation = 0
+    let totalCacheRead = 0
+    let latestContextSize = 0
+    let latestTimestamp = 0
+    for (const msg of normalized) {
         if (msg.usage) {
-            latestUsage = {
-                inputTokens: msg.usage.input_tokens,
-                outputTokens: msg.usage.output_tokens,
-                cacheCreation: msg.usage.cache_creation_input_tokens ?? 0,
-                cacheRead: msg.usage.cache_read_input_tokens ?? 0,
-                contextSize: calculateContextSize(msg.usage),
-                timestamp: msg.createdAt
-            }
-            break
+            totalOutputTokens += msg.usage.output_tokens
+            totalCacheCreation += msg.usage.cache_creation_input_tokens ?? 0
+            totalCacheRead += msg.usage.cache_read_input_tokens ?? 0
+            latestContextSize = calculateContextSize(msg.usage)
+            latestTimestamp = msg.createdAt
+        }
+    }
+    if (latestTimestamp > 0) {
+        latestUsage = {
+            inputTokens: latestContextSize,
+            outputTokens: totalOutputTokens,
+            cacheCreation: totalCacheCreation,
+            cacheRead: totalCacheRead,
+            contextSize: latestContextSize,
+            timestamp: latestTimestamp
         }
     }
 
-    return { blocks: dedupeAgentEvents(foldApiErrorEvents(rootResult.blocks)), hasReadyEvent, latestUsage }
+    return { blocks: dedupeAgentEvents(foldCompactionEvents(foldApiErrorEvents(rootResult.blocks))), hasReadyEvent, latestUsage }
 }

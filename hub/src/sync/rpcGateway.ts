@@ -40,9 +40,24 @@ export type RpcListDirectoryResponse = {
     error?: string
 }
 
+export type RpcCreateDirectoryResponse = {
+    success: boolean
+    error?: string
+}
+
+export type RpcWriteProjectFileResponse = {
+    success: boolean
+    path?: string
+    error?: string
+}
+
 export type RpcPathExistsResponse = {
     exists: Record<string, boolean>
 }
+
+export type RpcSwitchMcpProfileResponse =
+    | { ok: true; currentMcpProfile: string }
+    | { ok: false; error: string }
 
 export class RpcGateway {
     constructor(
@@ -117,13 +132,14 @@ export class RpcGateway {
         worktreeName?: string,
         resumeSessionId?: string,
         effort?: string,
-        permissionMode?: PermissionMode
+        permissionMode?: PermissionMode,
+        apiProfile?: string
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
         try {
             const result = await this.machineRpc(
                 machineId,
                 'spawn-happy-session',
-                { type: 'spawn-in-directory', directory, agent, model, modelReasoningEffort, yolo, sessionType, worktreeName, resumeSessionId, effort, permissionMode }
+                { type: 'spawn-in-directory', directory, agent, model, modelReasoningEffort, yolo, sessionType, worktreeName, resumeSessionId, effort, permissionMode, apiProfile }
             )
             if (result && typeof result === 'object') {
                 const obj = result as Record<string, unknown>
@@ -176,6 +192,30 @@ export class RpcGateway {
         return exists
     }
 
+    async switchMcpProfile(
+        machineId: string,
+        input: { profile: string; mcpJsonPath: string }
+    ): Promise<RpcSwitchMcpProfileResponse> {
+        const result = await this.machineRpc(machineId, 'switch-mcp-profile', input) as RpcSwitchMcpProfileResponse | unknown
+        if (!result || typeof result !== 'object' || typeof (result as { ok?: unknown }).ok !== 'boolean') {
+            throw new Error('Unexpected switch-mcp-profile result')
+        }
+
+        if ((result as { ok: boolean }).ok) {
+            const currentMcpProfile = (result as { currentMcpProfile?: unknown }).currentMcpProfile
+            if (typeof currentMcpProfile !== 'string' || currentMcpProfile.length === 0) {
+                throw new Error('Invalid switch-mcp-profile success result')
+            }
+            return { ok: true, currentMcpProfile }
+        }
+
+        const error = (result as { error?: unknown }).error
+        if (typeof error !== 'string' || error.length === 0) {
+            throw new Error('Invalid switch-mcp-profile error result')
+        }
+        return { ok: false, error }
+    }
+
     async getGitStatus(sessionId: string, cwd?: string): Promise<RpcCommandResponse> {
         return await this.sessionRpc(sessionId, 'git-status', { cwd }) as RpcCommandResponse
     }
@@ -196,8 +236,16 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'listDirectory', { path }) as RpcListDirectoryResponse
     }
 
+    async createDirectory(sessionId: string, path: string): Promise<RpcCreateDirectoryResponse> {
+        return await this.sessionRpc(sessionId, 'createDirectory', { path }) as RpcCreateDirectoryResponse
+    }
+
+    async writeProjectFile(sessionId: string, path: string, content: string, overwrite?: boolean): Promise<RpcWriteProjectFileResponse> {
+        return await this.sessionRpc(sessionId, 'writeProjectFile', { path, content, overwrite }) as RpcWriteProjectFileResponse
+    }
+
     async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
-        return await this.sessionRpc(sessionId, 'uploadFile', { sessionId, filename, content, mimeType }) as RpcUploadFileResponse
+        return await this.sessionRpc(sessionId, 'uploadFile', { sessionId, filename, content, mimeType }, 120_000) as RpcUploadFileResponse
     }
 
     async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {
@@ -232,15 +280,23 @@ export class RpcGateway {
         }
     }
 
-    private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {
-        return await this.rpcCall(`${sessionId}:${method}`, params)
+    async cleanupSessionBlobs(machineId: string, sessionId: string): Promise<void> {
+        try {
+            await this.machineRpc(machineId, 'cleanupBlobDir', { sessionId })
+        } catch {
+            // CLI offline — orphan GC will handle it
+        }
     }
 
-    private async machineRpc(machineId: string, method: string, params: unknown): Promise<unknown> {
-        return await this.rpcCall(`${machineId}:${method}`, params)
+    private async sessionRpc(sessionId: string, method: string, params: unknown, timeoutMs?: number): Promise<unknown> {
+        return await this.rpcCall(`${sessionId}:${method}`, params, timeoutMs)
     }
 
-    private async rpcCall(method: string, params: unknown): Promise<unknown> {
+    private async machineRpc(machineId: string, method: string, params: unknown, timeoutMs?: number): Promise<unknown> {
+        return await this.rpcCall(`${machineId}:${method}`, params, timeoutMs)
+    }
+
+    private async rpcCall(method: string, params: unknown, timeoutMs: number = 30_000): Promise<unknown> {
         const socketId = this.rpcRegistry.getSocketIdForMethod(method)
         if (!socketId) {
             throw new Error(`RPC handler not registered: ${method}`)
@@ -251,7 +307,7 @@ export class RpcGateway {
             throw new Error(`RPC socket disconnected: ${method}`)
         }
 
-        const response = await socket.timeout(30_000).emitWithAck('rpc-request', {
+        const response = await socket.timeout(timeoutMs).emitWithAck('rpc-request', {
             method,
             params: JSON.stringify(params)
         }) as unknown

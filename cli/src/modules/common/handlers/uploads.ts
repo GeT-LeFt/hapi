@@ -1,5 +1,5 @@
 import { logger } from '@/ui/logger'
-import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'fs/promises'
 import { join, resolve, sep } from 'path'
 import { rmSync } from 'node:fs'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
@@ -139,6 +139,39 @@ function cleanupUploadDirsSync(): void {
         } catch (error) {
             logger.debug('Failed to cleanup upload directory on exit:', error)
         }
+    }
+}
+
+export function isTrackedUploadDir(dirPath: string): boolean {
+    for (const tracked of uploadDirs.values()) {
+        if (dirPath === tracked) return true
+    }
+    return false
+}
+
+export async function cleanupBlobDirBySessionId(sessionId: string): Promise<void> {
+    const sessionKey = getSessionKey(sessionId)
+    const safeKey = sanitizeFilename(sessionKey)
+    const blobsDir = getHapiBlobsDir()
+    const prefix = `${safeKey}-`
+
+    uploadDirs.delete(sessionKey)
+    uploadDirPromises.delete(sessionKey)
+
+    try {
+        const entries = await readdir(blobsDir, { withFileTypes: true })
+        for (const entry of entries) {
+            if (entry.isDirectory() && entry.name.startsWith(prefix)) {
+                const dirPath = join(blobsDir, entry.name)
+                try {
+                    await rm(dirPath, { recursive: true, force: true })
+                } catch (error) {
+                    logger.debug('Failed to cleanup blob dir:', dirPath, error)
+                }
+            }
+        }
+    } catch (error) {
+        logger.debug('Failed to list blobs dir for cleanup:', error)
     }
 }
 

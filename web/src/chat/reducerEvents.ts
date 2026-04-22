@@ -98,6 +98,58 @@ export function dedupeAgentEvents(blocks: ChatBlock[]): ChatBlock[] {
     return result
 }
 
+const COMPACTION_SUMMARY_THRESHOLD = 200
+
+function isCompactionEvent(block: ChatBlock): boolean {
+    if (block.kind !== 'agent-event') return false
+    const event = block.event as { type: string; message?: string }
+    if (event.type === 'compact' || event.type === 'microcompact') return true
+    if (event.type === 'message' && typeof event.message === 'string') {
+        const msg = event.message
+        if (msg === 'Compaction started' || msg === 'Compaction completed') return true
+        if (msg.length > COMPACTION_SUMMARY_THRESHOLD) return true
+    }
+    return false
+}
+
+function isCompactionSummary(block: ChatBlock): boolean {
+    if (block.kind !== 'agent-event') return false
+    const event = block.event as { type: string; message?: string }
+    return event.type === 'message' && typeof event.message === 'string' && event.message.length > COMPACTION_SUMMARY_THRESHOLD
+}
+
+/**
+ * Fold consecutive compaction events into a single block.
+ * Prefers the summary block (long text that triggers the folded UI).
+ */
+export function foldCompactionEvents(blocks: ChatBlock[]): ChatBlock[] {
+    const result: ChatBlock[] = []
+    let i = 0
+
+    while (i < blocks.length) {
+        if (!isCompactionEvent(blocks[i])) {
+            result.push(blocks[i])
+            i++
+            continue
+        }
+
+        let summaryBlock: ChatBlock | null = null
+        let lastBlock = blocks[i]
+
+        while (i < blocks.length && isCompactionEvent(blocks[i])) {
+            if (isCompactionSummary(blocks[i])) {
+                summaryBlock = blocks[i]
+            }
+            lastBlock = blocks[i]
+            i++
+        }
+
+        result.push(summaryBlock ?? lastBlock)
+    }
+
+    return result
+}
+
 /**
  * Fold consecutive api-error events, keeping only the latest state.
  */

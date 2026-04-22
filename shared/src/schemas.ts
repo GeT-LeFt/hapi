@@ -45,6 +45,8 @@ export const MetadataSchema = z.object({
     lifecycleStateSince: z.number().optional(),
     archivedBy: z.string().optional(),
     archiveReason: z.string().optional(),
+    mcpJsonPath: z.string().optional(),
+    currentMcpProfile: z.string().optional(),
     flavor: z.string().nullish(),
     worktree: WorktreeMetadataSchema.optional()
 })
@@ -197,6 +199,16 @@ const MachineChangedSchema = SessionEventBaseSchema.extend({
     machineId: z.string()
 })
 
+const McpReloadProgressStepSchema = z.enum([
+    'rpc-sent',
+    'rpc-acked',
+    'aborting',
+    'inactive',
+    'resuming',
+    'active',
+    'merged'
+])
+
 export const SyncEventSchema = z.discriminatedUnion('type', [
     SessionChangedSchema.extend({
         type: z.literal('session-added'),
@@ -239,6 +251,12 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         data: z.object({
             timestamp: z.number()
         }).optional()
+    }),
+    SessionChangedSchema.extend({
+        type: z.literal('mcp-reload-progress'),
+        step: McpReloadProgressStepSchema,
+        profile: z.string().optional(),
+        currentMcpProfile: z.string().optional()
     }),
     SessionEventBaseSchema.extend({
         type: z.literal('connection-changed'),

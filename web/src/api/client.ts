@@ -4,6 +4,7 @@ import type {
     CodexCollaborationMode,
     DeleteUploadResponse,
     ListDirectoryResponse,
+    CreateDirectoryResponse,
     FileReadResponse,
     FileSearchResponse,
     GitCommandResponse,
@@ -14,11 +15,13 @@ import type {
     PushSubscriptionPayload,
     PushUnsubscribePayload,
     PushVapidPublicKeyResponse,
+    ReloadMcpProfileResponse,
     SlashCommandsResponse,
     SkillsResponse,
     SpawnResponse,
     UploadFileResponse,
     VisibilityPayload,
+    WriteProjectFileResponse,
     SessionResponse,
     SessionsResponse
 } from '@/types/api'
@@ -252,6 +255,20 @@ export class ApiClient {
         )
     }
 
+    async createDirectory(sessionId: string, path: string): Promise<CreateDirectoryResponse> {
+        return await this.request<CreateDirectoryResponse>(
+            `/api/sessions/${encodeURIComponent(sessionId)}/directory`,
+            { method: 'POST', body: JSON.stringify({ path }) }
+        )
+    }
+
+    async writeProjectFile(sessionId: string, path: string, content: string, overwrite?: boolean): Promise<WriteProjectFileResponse> {
+        return await this.request<WriteProjectFileResponse>(
+            `/api/sessions/${encodeURIComponent(sessionId)}/write-file`,
+            { method: 'POST', body: JSON.stringify({ path, content, overwrite }) }
+        )
+    }
+
     async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<UploadFileResponse> {
         return await this.request<UploadFileResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/upload`, {
             method: 'POST',
@@ -272,6 +289,16 @@ export class ApiClient {
             { method: 'POST' }
         )
         return response.sessionId
+    }
+
+    async reloadMcpProfile(sessionId: string, profile: string): Promise<ReloadMcpProfileResponse> {
+        return await this.request<ReloadMcpProfileResponse>(
+            `/api/sessions/${encodeURIComponent(sessionId)}/reload-mcp`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ profile })
+            }
+        )
     }
 
     async sendMessage(sessionId: string, text: string, localId?: string | null, attachments?: AttachmentMetadata[]): Promise<void> {
@@ -399,11 +426,12 @@ export class ApiClient {
         yolo?: boolean,
         sessionType?: 'simple' | 'worktree',
         worktreeName?: string,
-        effort?: string
+        effort?: string,
+        apiProfile?: string
     ): Promise<SpawnResponse> {
         return await this.request<SpawnResponse>(`/api/machines/${encodeURIComponent(machineId)}/spawn`, {
             method: 'POST',
-            body: JSON.stringify({ directory, agent, model, modelReasoningEffort, yolo, sessionType, worktreeName, effort })
+            body: JSON.stringify({ directory, agent, model, modelReasoningEffort, yolo, sessionType, worktreeName, effort, apiProfile })
         })
     }
 
@@ -430,6 +458,20 @@ export class ApiClient {
         await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
             method: 'DELETE'
         })
+    }
+
+    async getLlmUsage(): Promise<{
+        data: {
+            updated: string
+            today: string
+            today_spend: string
+            week: Array<{ date: string; day: string; spend: string }>
+            week_total: string
+            receivedAt: number
+        } | null
+        stale: boolean
+    }> {
+        return await this.request('/api/llm-usage')
     }
 
     async fetchVoiceToken(options?: { customAgentId?: string; customApiKey?: string }): Promise<{

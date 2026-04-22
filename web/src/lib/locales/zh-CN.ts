@@ -57,6 +57,12 @@ export default {
   // Session header
   'session.title': '文件',
   'session.more': '更多操作',
+  'session.mcp.label': 'MCP 配置',
+  'session.mcp.current': '当前：{profile}',
+  'session.mcp.currentUnknown': '当前：未知',
+  'session.mcp.switch': '切换',
+  'session.mcp.switching': '切换中…',
+  'session.mcp.failed.title': 'MCP 切换失败',
 
   // Session actions
   'session.action.rename': '重命名',
@@ -292,4 +298,8 @@ export default {
   'misc.permissionRequired': '需要权限',
   'misc.percentLeft': '剩余 {percent}%',
   'misc.online': '在线',
+
+  'notifications.title': '通知',
+  'notifications.clearAll': '全部清除',
+  'notifications.empty': '暂无通知',
 } as const

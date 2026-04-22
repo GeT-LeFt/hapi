@@ -1,0 +1,232 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches: [main, dev]
+
+env:
+  IMAGE_NAME: getleft/hapi
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.5'
+      - run: bun install
+      - run: bun run typecheck
+
+  docker-build-push:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push Docker image
+        run: |
+          IMAGE=${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}
+          SHA=$(echo "${{ github.sha }}" | head -c 7)
+
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            LATEST_TAG="latest"
+          else
+            LATEST_TAG="latest-staging"
+          fi
+
+          docker build \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -t "$IMAGE:$LATEST_TAG" \
+            -t "$IMAGE:$SHA" \
+            .
+
+          docker push "$IMAGE:$LATEST_TAG"
+          docker push "$IMAGE:$SHA"
+
+  deploy-staging:
+    if: github.ref_name == 'dev'
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - name: Deploy staging to ECS via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          script: |
+            set -e
+
+            CONTAINER="hapi-staging"
+            PORT=3007
+            IMAGE=${{ secrets.ACR_REGISTRY }}/getleft/hapi:latest-staging
+
+            docker login \
+              --username "${{ secrets.ACR_USERNAME }}" \
+              --password "${{ secrets.ACR_PASSWORD }}" \
+              "${{ secrets.ACR_REGISTRY }}"
+
+            docker pull "$IMAGE"
+
+            # --- Phase 1: Stop old container (30s graceful shutdown) ---
+            docker stop -t 30 "$CONTAINER" 2>/dev/null || true
+            docker rm "$CONTAINER" 2>/dev/null || true
+
+            # --- Phase 2: Wait for port release + zombie cleanup ---
+            for i in $(seq 1 15); do
+              if ! ss -tlnp | grep -q ":${PORT} "; then
+                echo "Port ${PORT} released."
+                break
+              fi
+              if [ "$i" = "15" ]; then
+                echo "WARN: Port ${PORT} still occupied after 15s, cleaning up..."
+                PID=$(ss -tlnp | grep ":${PORT} " | grep -oP "pid=\K[0-9]+" | head -1)
+                if [ -n "$PID" ]; then
+                  echo "Killing zombie process PID=$PID"
+                  kill -9 "$PID" 2>/dev/null || true
+                  sleep 2
+                fi
+                if ss -tlnp | grep -q ":${PORT} "; then
+                  echo "WARN: Port still occupied, restarting Docker daemon..."
+                  systemctl restart docker
+                  sleep 10
+                fi
+              fi
+              sleep 1
+            done
+
+            # --- Phase 3: Start new container WITHOUT restart policy ---
+            docker run -d \
+              --name "$CONTAINER" \
+              --restart no \
+              --network host \
+              -v /root/.hapi-staging:/root/.hapi \
+              --env-file /opt/hapi/.env.staging \
+              "$IMAGE"
+
+            # --- Phase 4: Health check ---
+            echo "Waiting for HAPI staging to start..."
+            HEALTHY=false
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:${PORT}/health > /dev/null 2>&1; then
+                echo "HAPI staging is healthy!"
+                HEALTHY=true
+                break
+              fi
+              sleep 2
+            done
+
+            # --- Phase 5: Set restart policy on success, cleanup on failure ---
+            if [ "$HEALTHY" = "true" ]; then
+              docker update --restart unless-stopped "$CONTAINER"
+              echo "Restart policy set to unless-stopped."
+            else
+              echo "Staging health check failed after 60s"
+              docker logs "$CONTAINER" --tail 50
+              docker stop "$CONTAINER" 2>/dev/null || true
+              docker rm "$CONTAINER" 2>/dev/null || true
+              exit 1
+            fi
+
+  deploy-production:
+    if: github.ref_name == 'main'
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Deploy production to ECS via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          script: |
+            set -e
+
+            CONTAINER="hapi"
+            PORT=3006
+            IMAGE=${{ secrets.ACR_REGISTRY }}/getleft/hapi:latest
+
+            docker login \
+              --username "${{ secrets.ACR_USERNAME }}" \
+              --password "${{ secrets.ACR_PASSWORD }}" \
+              "${{ secrets.ACR_REGISTRY }}"
+
+            docker pull "$IMAGE"
+
+            # --- Phase 1: Stop old container (30s graceful shutdown) ---
+            docker stop -t 30 "$CONTAINER" 2>/dev/null || true
+            docker rm "$CONTAINER" 2>/dev/null || true
+
+            systemctl stop hapi.service hapi-hub.service 2>/dev/null || true
+            systemctl disable hapi.service hapi-hub.service 2>/dev/null || true
+
+            # --- Phase 2: Wait for port release + zombie cleanup ---
+            for i in $(seq 1 15); do
+              if ! ss -tlnp | grep -q ":${PORT} "; then
+                echo "Port ${PORT} released."
+                break
+              fi
+              if [ "$i" = "15" ]; then
+                echo "WARN: Port ${PORT} still occupied after 15s, cleaning up..."
+                PID=$(ss -tlnp | grep ":${PORT} " | grep -oP "pid=\K[0-9]+" | head -1)
+                if [ -n "$PID" ]; then
+                  echo "Killing zombie process PID=$PID"
+                  kill -9 "$PID" 2>/dev/null || true
+                  sleep 2
+                fi
+                if ss -tlnp | grep -q ":${PORT} "; then
+                  echo "WARN: Port still occupied, restarting Docker daemon..."
+                  systemctl restart docker
+                  sleep 10
+                fi
+              fi
+              sleep 1
+            done
+
+            # --- Phase 3: Start new container WITHOUT restart policy ---
+            docker run -d \
+              --name "$CONTAINER" \
+              --restart no \
+              --network host \
+              -v /root/.hapi:/root/.hapi \
+              --env-file /opt/hapi/.env \
+              "$IMAGE"
+
+            # --- Phase 4: Health check ---
+            echo "Waiting for HAPI to start..."
+            HEALTHY=false
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:${PORT}/health > /dev/null 2>&1; then
+                echo "HAPI is healthy!"
+                HEALTHY=true
+                break
+              fi
+              sleep 2
+            done
+
+            # --- Phase 5: Set restart policy on success, cleanup on failure ---
+            if [ "$HEALTHY" = "true" ]; then
+              docker update --restart unless-stopped "$CONTAINER"
+              echo "Restart policy set to unless-stopped."
+            else
+              echo "Health check failed after 60s"
+              docker logs "$CONTAINER" --tail 50
+              docker stop "$CONTAINER" 2>/dev/null || true
+              docker rm "$CONTAINER" 2>/dev/null || true
+              exit 1
+            fi

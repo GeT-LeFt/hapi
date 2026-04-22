@@ -26,7 +26,17 @@ function extractTodosFromClaudeOutput(content: Record<string, unknown>): TodoIte
         if (!isObject(input)) continue
 
         const todosCandidate = input.todos
-        const parsed = TodosSchema.safeParse(todosCandidate)
+        if (!Array.isArray(todosCandidate)) continue
+
+        const withIds = todosCandidate.map((item, index) => {
+            if (!isObject(item)) return item
+            return {
+                ...item,
+                id: typeof item.id === 'string' && item.id ? item.id : `todo-${index + 1}`
+            }
+        })
+
+        const parsed = TodosSchema.safeParse(withIds)
         if (parsed.success) {
             return parsed.data
         }
@@ -48,7 +58,17 @@ function extractTodosFromCodexMessage(content: Record<string, unknown>): TodoIte
     if (!isObject(input)) return null
 
     const todosCandidate = input.todos
-    const parsed = TodosSchema.safeParse(todosCandidate)
+    if (!Array.isArray(todosCandidate)) return null
+
+    const withIds = todosCandidate.map((item, index) => {
+        if (!isObject(item)) return item
+        return {
+            ...item,
+            id: typeof item.id === 'string' && item.id ? item.id : `todo-${index + 1}`
+        }
+    })
+
+    const parsed = TodosSchema.safeParse(withIds)
     return parsed.success ? parsed.data : null
 }
 
