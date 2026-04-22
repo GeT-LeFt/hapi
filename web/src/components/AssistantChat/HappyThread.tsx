@@ -304,12 +304,9 @@ export function HappyThread(props: {
             viewport.scrollTop = pending.scrollTop + delta
             pendingScrollRef.current = null
             loadLockRef.current = false
+            console.log('[SCROLL] layoutEffect: pendingScroll applied')
             return
         }
-        // Restore cached scroll position on session revisit.
-        // ThreadPrimitive.Messages hydrates one render after messagesVersion changes,
-        // so children may not yet be in the DOM when this effect fires. Fall back to
-        // a MutationObserver + rAF loop to catch the first real content commit.
         const restore = pendingRestoreRef.current
         if (restore) {
             const messagesEl = viewport.querySelector('.happy-thread-messages')
@@ -318,17 +315,24 @@ export function HappyThread(props: {
                 const vp = viewportRef.current
                 const el = vp?.querySelector('.happy-thread-messages')
                 if (!vp || !el || el.children.length === 0) return false
-                vp.scrollTop = pendingRestoreRef.current.scrollTop
-                console.log('[SCROLL] restored to', pendingRestoreRef.current.scrollTop)
+                const target = pendingRestoreRef.current.scrollTop
+                vp.scrollTop = target
+                console.log('[SCROLL] restored to', target, 'actual=', vp.scrollTop, 'scrollHeight=', vp.scrollHeight)
                 pendingRestoreRef.current = null
                 settlingRef.current = false
+                // Re-apply after paint to defeat any library-driven scroll reset
+                requestAnimationFrame(() => {
+                    if (vp.scrollTop !== target) {
+                        console.log('[SCROLL] rAF re-restore from', vp.scrollTop, 'to', target)
+                        vp.scrollTop = target
+                    }
+                })
                 return true
             }
             if (messagesEl && messagesEl.children.length > 0) {
                 applyRestore()
                 return
             }
-            // Defer: observe until children appear, then restore
             const host = messagesEl ?? viewport
             const observer = new MutationObserver(() => {
                 if (applyRestore()) observer.disconnect()
@@ -337,10 +341,11 @@ export function HappyThread(props: {
             setTimeout(() => observer.disconnect(), 5000)
             return
         }
-        // Stay pinned to bottom only when the user is already at bottom.
-        // Replaces the library's resize-triggered scrollToBottom which ignored user intent.
         if (atBottomRef.current) {
+            console.log('[SCROLL] layoutEffect: pinToBottom, scrollHeight=', viewport.scrollHeight, 'ver=', props.messagesVersion)
             viewport.scrollTop = viewport.scrollHeight
+        } else {
+            console.log('[SCROLL] layoutEffect: skip (not atBottom), ver=', props.messagesVersion, 'scrollTop=', viewport.scrollTop)
         }
     }, [props.messagesVersion])
 
