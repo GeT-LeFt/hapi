@@ -222,6 +222,8 @@ body {
         backface-visibility: hidden;
         transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
         will-change: transform;
+        contain: layout paint;
+        isolation: isolate;
     }
     .mobile-slide-panel-left {
         transform: translate3d(0, 0, 0);
