@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { TodoItem } from '@/types/api'
 
 function todoIcon(status: string) {
@@ -13,49 +13,66 @@ function todoStyle(status: string) {
     return 'text-[var(--app-hint)]'
 }
 
-export function StickyTodoList(props: { todos?: TodoItem[] }) {
+function todosSignature(todos: TodoItem[]): string {
+    return todos.map(t => `${t.id}:${t.status}`).join('|')
+}
+
+function dismissKey(sessionId: string | undefined): string | null {
+    if (!sessionId) return null
+    return `hapi:stickyTodo:dismissed:${sessionId}`
+}
+
+export function StickyTodoList(props: { todos?: TodoItem[]; sessionId?: string }) {
     const todos = props.todos
     const [collapsed, setCollapsed] = useState(false)
-    const [visible, setVisible] = useState(false)
-    const fadeTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
+    const [dismissedSig, setDismissedSig] = useState<string | null>(null)
 
-    const hasTodos = todos && todos.length > 0
-    const completedCount = hasTodos ? todos.filter(t => t.status === 'completed').length : 0
-    const totalCount = hasTodos ? todos.length : 0
-    const allDone = hasTodos && completedCount === totalCount
-    const inProgressItem = hasTodos ? todos.find(t => t.status === 'in_progress') : null
+    const hasTodos = !!todos && todos.length > 0
+    const signature = useMemo(() => (hasTodos ? todosSignature(todos!) : ''), [todos, hasTodos])
 
     useEffect(() => {
-        if (fadeTimerRef.current) {
-            clearTimeout(fadeTimerRef.current)
-            fadeTimerRef.current = null
+        const key = dismissKey(props.sessionId)
+        if (!key) {
+            setDismissedSig(null)
+            return
         }
-
-        if (hasTodos && !allDone) {
-            setVisible(true)
-        } else if (hasTodos && allDone) {
-            setVisible(true)
-            fadeTimerRef.current = setTimeout(() => setVisible(false), 5000)
-        } else {
-            setVisible(false)
+        try {
+            setDismissedSig(window.localStorage.getItem(key))
+        } catch {
+            setDismissedSig(null)
         }
+    }, [props.sessionId])
 
-        return () => {
-            if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current)
+    if (!hasTodos) return null
+    if (dismissedSig && dismissedSig === signature) return null
+
+    const completedCount = todos!.filter(t => t.status === 'completed').length
+    const totalCount = todos!.length
+    const inProgressItem = todos!.find(t => t.status === 'in_progress')
+    const allDone = completedCount === totalCount
+
+    const handleDismiss = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        const key = dismissKey(props.sessionId)
+        if (key) {
+            try {
+                window.localStorage.setItem(key, signature)
+            } catch {
+                // ignore quota/privacy errors
+            }
         }
-    }, [hasTodos, allDone])
-
-    if (!visible || !hasTodos) return null
+        setDismissedSig(signature)
+    }
 
     return (
-        <div className={`border-t border-[var(--app-divider)] bg-[var(--app-bg)] transition-opacity duration-500 ${allDone ? 'opacity-50' : 'opacity-100'}`}>
+        <div className={`border-t border-[var(--app-divider)] bg-[var(--app-bg)] ${allDone ? 'opacity-70' : ''}`}>
             <div className="mx-auto w-full max-w-content px-3 py-2">
-                <button
-                    type="button"
-                    className="flex w-full cursor-pointer items-center justify-between text-left"
-                    onClick={() => setCollapsed(c => !c)}
-                >
-                    <div className="flex items-center gap-2">
+                <div className="flex w-full items-center justify-between">
+                    <button
+                        type="button"
+                        className="flex flex-1 cursor-pointer items-center gap-2 text-left"
+                        onClick={() => setCollapsed(c => !c)}
+                    >
                         <span className="text-xs text-[var(--app-hint)]">
                             {collapsed ? '▸' : '▾'}
                         </span>
@@ -65,17 +82,25 @@ export function StickyTodoList(props: { todos?: TodoItem[] }) {
                         <span className="text-xs text-[var(--app-hint)]">
                             {completedCount}/{totalCount}
                         </span>
-                    </div>
-                    {collapsed && inProgressItem ? (
-                        <span className="truncate text-xs text-[var(--app-link)]">
-                            {inProgressItem.content}
-                        </span>
-                    ) : null}
-                </button>
+                        {collapsed && inProgressItem ? (
+                            <span className="ml-2 truncate text-xs text-[var(--app-link)]">
+                                {inProgressItem.content}
+                            </span>
+                        ) : null}
+                    </button>
+                    <button
+                        type="button"
+                        aria-label="Dismiss todo list"
+                        className="ml-2 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-[var(--app-hint)] hover:bg-[var(--app-divider)] hover:text-[var(--app-fg)]"
+                        onClick={handleDismiss}
+                    >
+                        <span className="text-xs leading-none">×</span>
+                    </button>
+                </div>
 
                 {!collapsed ? (
                     <div className="mt-1.5 flex flex-col gap-0.5">
-                        {todos.map((item) => (
+                        {todos!.map((item) => (
                             <div key={item.id} className={`text-xs leading-relaxed ${todoStyle(item.status)}`}>
                                 <span className="mr-1">{todoIcon(item.status)}</span>
                                 <span>{item.content}</span>

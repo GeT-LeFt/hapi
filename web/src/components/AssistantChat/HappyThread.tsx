@@ -121,11 +121,12 @@ export function HappyThread(props: {
         const viewport = viewportRef.current
         if (!viewport) return
 
-        const THRESHOLD_PX = 120
+        const BOTTOM_THRESHOLD_PX = 120
+        const TOP_THRESHOLD_PX = 300
 
         const handleScroll = () => {
             const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
-            const isNearBottom = distanceFromBottom < THRESHOLD_PX
+            const isNearBottom = distanceFromBottom < BOTTOM_THRESHOLD_PX
 
             if (isNearBottom) {
                 if (!autoScrollEnabledRef.current) setAutoScrollEnabled(true)
@@ -139,6 +140,11 @@ export function HappyThread(props: {
                 if (isNearBottom) {
                     onFlushPendingRef.current()
                 }
+            }
+
+            // Auto-load older messages when scrolled near top
+            if (viewport.scrollTop < TOP_THRESHOLD_PX) {
+                handleLoadMoreRef.current()
             }
         }
 

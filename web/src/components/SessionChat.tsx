@@ -388,7 +388,7 @@ export function SessionChat(props: {
                         forceScrollToken={forceScrollToken}
                     />
 
-                    <StickyTodoList todos={props.session.todos} />
+                    <StickyTodoList todos={props.session.todos} sessionId={props.session.id} />
 
                     <HappyComposer
                         key={props.session.id}
@@ -406,6 +406,8 @@ export function SessionChat(props: {
                         agentState={props.session.agentState}
                         backgroundTaskCount={props.session.backgroundTaskCount}
                         contextSize={reduced.latestUsage?.contextSize}
+                        inputTokens={reduced.latestUsage?.inputTokens}
+                        outputTokens={reduced.latestUsage?.outputTokens}
                         controlledByUser={controlledByUser}
                         onCollaborationModeChange={
                             codexCollaborationModeSupported && props.session.active && !controlledByUser

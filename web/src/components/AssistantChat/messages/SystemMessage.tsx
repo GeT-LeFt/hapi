@@ -45,9 +45,42 @@ export function HappySystemMessage() {
         return event ? getEventPresentation(event).icon : null
     })
 
+    const eventType = useAssistantState(({ message }) => {
+        if (message.role !== 'system') return null
+        const custom = message.metadata.custom as Partial<HappyChatMessageMetadata> | undefined
+        const event = custom?.kind === 'event' ? custom.event : undefined
+        return event?.type ?? null
+    })
+    const turnDurationMs = useAssistantState(({ message }) => {
+        if (message.role !== 'system') return null
+        const custom = message.metadata.custom as Partial<HappyChatMessageMetadata> | undefined
+        const event = custom?.kind === 'event' ? custom.event : undefined
+        if (event?.type !== 'turn-duration') return null
+        return typeof (event as Record<string, unknown>).durationMs === 'number'
+            ? (event as Record<string, unknown>).durationMs as number
+            : null
+    })
+
     const [isOpen, setIsOpen] = useState(false)
 
     if (role !== 'system') return null
+
+    if (eventType === 'turn-duration' && turnDurationMs !== null) {
+        const seconds = turnDurationMs / 1000
+        const label = seconds < 60
+            ? `${seconds.toFixed(1)}s`
+            : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
+        return (
+            <div className="py-2">
+                <div className="mx-auto w-fit px-3 py-1 rounded-full bg-[var(--app-secondary-bg)] border border-[var(--app-border)]">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--app-hint)]">
+                        <span aria-hidden="true">⏱️</span>
+                        <span>本次回答耗时 {label}</span>
+                    </span>
+                </div>
+            </div>
+        )
+    }
 
     const isLong = text.length > COLLAPSE_THRESHOLD
 

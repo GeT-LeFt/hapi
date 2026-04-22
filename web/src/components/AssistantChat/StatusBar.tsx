@@ -119,12 +119,19 @@ function getContextWarning(contextSize: number, maxContextSize: number, t: (key:
     }
 }
 
+function formatTokenCount(n: number): string {
+    if (n >= 1000) return `${Math.round(n / 1000)}K`
+    return String(n)
+}
+
 export function StatusBar(props: {
     active: boolean
     thinking: boolean
     agentState: AgentState | null | undefined
     backgroundTaskCount?: number
     contextSize?: number
+    inputTokens?: number
+    outputTokens?: number
     model?: string | null
     permissionMode?: PermissionMode
     collaborationMode?: CodexCollaborationMode
@@ -179,6 +186,11 @@ export function StatusBar(props: {
                 {contextWarning ? (
                     <span className={`text-[10px] ${contextWarning.color}`}>
                         {contextWarning.text}
+                    </span>
+                ) : null}
+                {props.inputTokens !== undefined && props.outputTokens !== undefined ? (
+                    <span className="text-[10px] tabular-nums text-[var(--app-hint)]">
+                        {formatTokenCount(props.inputTokens)}in/{formatTokenCount(props.outputTokens)}out
                     </span>
                 ) : null}
             </div>

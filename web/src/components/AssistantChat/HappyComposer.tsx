@@ -55,6 +55,8 @@ export function HappyComposer(props: {
     agentState?: AgentState | null
     backgroundTaskCount?: number
     contextSize?: number
+    inputTokens?: number
+    outputTokens?: number
     controlledByUser?: boolean
     agentFlavor?: string | null
     onCollaborationModeChange?: (mode: CodexCollaborationMode) => void
@@ -89,6 +91,8 @@ export function HappyComposer(props: {
         agentState,
         backgroundTaskCount,
         contextSize,
+        inputTokens,
+        outputTokens,
         controlledByUser = false,
         agentFlavor,
         onCollaborationModeChange,
@@ -763,6 +767,8 @@ export function HappyComposer(props: {
                         agentState={agentState}
                         backgroundTaskCount={backgroundTaskCount}
                         contextSize={contextSize}
+                        inputTokens={inputTokens}
+                        outputTokens={outputTokens}
                         model={model}
                         permissionMode={permissionMode}
                         collaborationMode={collaborationMode}
