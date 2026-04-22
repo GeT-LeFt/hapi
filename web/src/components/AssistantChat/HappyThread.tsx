@@ -319,15 +319,25 @@ export function HappyThread(props: {
                 const target = pendingRestoreRef.current.scrollTop
                 vp.scrollTop = target
                 pendingRestoreRef.current = null
-                // Keep settlingRef true until after paint — scrollHeight may not
-                // be final yet (clamps scrollTop to 0), and IntersectionObserver
-                // would fire loadMore at scrollTop=0, racing the restore.
-                requestAnimationFrame(() => {
-                    if (vp.scrollTop !== target) {
-                        vp.scrollTop = target
+                // scrollHeight may still be growing (partial render), so scrollTop
+                // gets clamped below target. Retry each frame until it sticks.
+                const retryRestore = (attempt: number) => {
+                    if (attempt > 10) {
+                        settlingRef.current = false
+                        return
                     }
-                    settlingRef.current = false
-                })
+                    requestAnimationFrame(() => {
+                        if (vp.scrollTop !== target && vp.scrollHeight > target) {
+                            vp.scrollTop = target
+                        }
+                        if (vp.scrollTop === target || attempt >= 5) {
+                            settlingRef.current = false
+                        } else {
+                            retryRestore(attempt + 1)
+                        }
+                    })
+                }
+                retryRestore(0)
                 return true
             }
             if (messagesEl && messagesEl.children.length > 0) {
