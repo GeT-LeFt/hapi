@@ -268,18 +268,37 @@ export function HappyThread(props: {
         }
     }, [props.messagesVersion])
 
-    // Ensure scroll-to-bottom on first mount even when messagesVersion doesn't change
-    // (e.g. switching back to a session whose messages are already cached).
-    const didMountScrollRef = useRef(false)
-    useLayoutEffect(() => {
-        if (didMountScrollRef.current) return
+    // Handle scroll-to-bottom on session switch / initial mount.
+    // ThreadPrimitive.Messages renders one cycle after messagesVersion changes
+    // (assistant-ui runtime updates via useEffect), so useLayoutEffect on
+    // messagesVersion fires before messages are in the DOM.
+    // Use MutationObserver to detect actual content appearing.
+    useEffect(() => {
         const viewport = viewportRef.current
-        if (!viewport || props.messagesVersion === 0) return
-        if (atBottomRef.current) {
-            viewport.scrollTop = viewport.scrollHeight
+        if (!viewport) return
+
+        const messagesEl = viewport.querySelector('.happy-thread-messages')
+        if (!messagesEl) return
+
+        if (messagesEl.children.length > 0) {
+            if (atBottomRef.current) {
+                viewport.scrollTop = viewport.scrollHeight
+            }
+            return
         }
-        didMountScrollRef.current = true
-    }, [props.messagesVersion])
+
+        const observer = new MutationObserver(() => {
+            if (messagesEl.children.length > 0) {
+                observer.disconnect()
+                if (atBottomRef.current) {
+                    viewport.scrollTop = viewport.scrollHeight
+                }
+            }
+        })
+
+        observer.observe(messagesEl, { childList: true, subtree: true })
+        return () => observer.disconnect()
+    }, [])
 
     useEffect(() => {
         isLoadingMoreRef.current = props.isLoadingMoreMessages
