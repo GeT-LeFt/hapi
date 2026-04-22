@@ -297,6 +297,11 @@ export function HappyThread(props: {
         }
         const pending = pendingScrollRef.current
         if (pending) {
+            if (settlingRef.current) {
+                pendingScrollRef.current = null
+                loadLockRef.current = false
+                return
+            }
             const delta = viewport.scrollHeight - pending.scrollHeight
             viewport.scrollTop = pending.scrollTop + delta
             pendingScrollRef.current = null
