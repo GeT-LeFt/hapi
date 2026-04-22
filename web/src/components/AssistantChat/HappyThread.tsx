@@ -184,12 +184,10 @@ export function HappyThread(props: {
         return () => {
             const viewport = viewportRef.current
             if (viewport) {
-                const entry = {
+                scrollCache.set(props.sessionId, {
                     scrollTop: viewport.scrollTop,
                     atBottom: atBottomRef.current
-                }
-                scrollCache.set(props.sessionId, entry)
-                console.log('[SCROLL] save', props.sessionId.slice(0, 8), entry)
+                })
                 if (scrollCache.size > SCROLL_CACHE_MAX) {
                     const oldest = scrollCache.keys().next().value
                     if (oldest) scrollCache.delete(oldest)
@@ -207,7 +205,6 @@ export function HappyThread(props: {
         onFlushPendingRef.current()
         forceScrollTokenRef.current = props.forceScrollToken
         const cached = scrollCache.get(props.sessionId)
-        console.log('[SCROLL] session-change', props.sessionId.slice(0, 8), 'cached=', cached)
         if (cached && !cached.atBottom) {
             pendingRestoreRef.current = { scrollTop: cached.scrollTop }
             atBottomRef.current = false
@@ -228,7 +225,7 @@ export function HappyThread(props: {
     }, [props.forceScrollToken, scrollToBottom])
 
     const handleLoadMore = useCallback(() => {
-        if (isLoadingMessagesRef.current || !hasMoreMessagesRef.current || isLoadingMoreRef.current || loadLockRef.current) {
+        if (isLoadingMessagesRef.current || !hasMoreMessagesRef.current || isLoadingMoreRef.current || loadLockRef.current || settlingRef.current) {
             return
         }
         const viewport = viewportRef.current
@@ -304,7 +301,6 @@ export function HappyThread(props: {
             viewport.scrollTop = pending.scrollTop + delta
             pendingScrollRef.current = null
             loadLockRef.current = false
-            console.log('[SCROLL] layoutEffect: pendingScroll applied')
             return
         }
         const restore = pendingRestoreRef.current
@@ -317,13 +313,12 @@ export function HappyThread(props: {
                 if (!vp || !el || el.children.length === 0) return false
                 const target = pendingRestoreRef.current.scrollTop
                 vp.scrollTop = target
-                console.log('[SCROLL] restored to', target, 'actual=', vp.scrollTop, 'scrollHeight=', vp.scrollHeight)
                 pendingRestoreRef.current = null
                 settlingRef.current = false
-                // Re-apply after paint to defeat any library-driven scroll reset
+                // Layout may not be stable yet (scrollHeight still growing),
+                // so re-apply after paint to defeat any clamp or library reset
                 requestAnimationFrame(() => {
                     if (vp.scrollTop !== target) {
-                        console.log('[SCROLL] rAF re-restore from', vp.scrollTop, 'to', target)
                         vp.scrollTop = target
                     }
                 })
@@ -342,10 +337,7 @@ export function HappyThread(props: {
             return
         }
         if (atBottomRef.current) {
-            console.log('[SCROLL] layoutEffect: pinToBottom, scrollHeight=', viewport.scrollHeight, 'ver=', props.messagesVersion)
             viewport.scrollTop = viewport.scrollHeight
-        } else {
-            console.log('[SCROLL] layoutEffect: skip (not atBottom), ver=', props.messagesVersion, 'scrollTop=', viewport.scrollTop)
         }
     }, [props.messagesVersion])
 
