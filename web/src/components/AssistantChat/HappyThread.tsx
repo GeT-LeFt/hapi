@@ -249,15 +249,23 @@ export function HappyThread(props: {
     }, [props.hasMoreMessages, props.isLoadingMessages])
 
     useLayoutEffect(() => {
-        const pending = pendingScrollRef.current
         const viewport = viewportRef.current
-        if (!pending || !viewport) {
+        if (!viewport) {
             return
         }
-        const delta = viewport.scrollHeight - pending.scrollHeight
-        viewport.scrollTop = pending.scrollTop + delta
-        pendingScrollRef.current = null
-        loadLockRef.current = false
+        const pending = pendingScrollRef.current
+        if (pending) {
+            const delta = viewport.scrollHeight - pending.scrollHeight
+            viewport.scrollTop = pending.scrollTop + delta
+            pendingScrollRef.current = null
+            loadLockRef.current = false
+            return
+        }
+        // Stay pinned to bottom only when the user is already at bottom.
+        // Replaces the library's resize-triggered scrollToBottom which ignored user intent.
+        if (atBottomRef.current) {
+            viewport.scrollTop = viewport.scrollHeight
+        }
     }, [props.messagesVersion])
 
     useEffect(() => {
@@ -284,7 +292,7 @@ export function HappyThread(props: {
             onRetryMessage: props.onRetryMessage
         }}>
             <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col relative">
-                <ThreadPrimitive.Viewport asChild autoScroll={autoScrollEnabled}>
+                <ThreadPrimitive.Viewport asChild autoScroll={false}>
                     <div ref={viewportRef} className="app-scroll-y min-h-0 flex-1 overflow-x-hidden">
                         <div className="mx-auto w-full max-w-content min-w-0 p-3">
                             <div ref={topSentinelRef} className="h-px w-full" aria-hidden="true" />
