@@ -189,7 +189,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 }
             }
             socket.to(`session:${sid}`).emit('update', update)
-            onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid } })
+            onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { updatedAt: Date.now() } })
         }
     }
 
@@ -236,7 +236,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 }
             }
             socket.to(`session:${sid}`).emit('update', update)
-            onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid } })
+            onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { updatedAt: Date.now() } })
         }
     }
 

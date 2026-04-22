@@ -268,6 +268,19 @@ export function HappyThread(props: {
         }
     }, [props.messagesVersion])
 
+    // Ensure scroll-to-bottom on first mount even when messagesVersion doesn't change
+    // (e.g. switching back to a session whose messages are already cached).
+    const didMountScrollRef = useRef(false)
+    useLayoutEffect(() => {
+        if (didMountScrollRef.current) return
+        const viewport = viewportRef.current
+        if (!viewport || props.messagesVersion === 0) return
+        if (atBottomRef.current) {
+            viewport.scrollTop = viewport.scrollHeight
+        }
+        didMountScrollRef.current = true
+    }, [props.messagesVersion])
+
     useEffect(() => {
         isLoadingMoreRef.current = props.isLoadingMoreMessages
         if (props.isLoadingMoreMessages) {
