@@ -303,15 +303,34 @@ export function HappyThread(props: {
             loadLockRef.current = false
             return
         }
-        // Restore cached scroll position on session revisit (only once, after messages render)
+        // Restore cached scroll position on session revisit.
+        // ThreadPrimitive.Messages hydrates one render after messagesVersion changes,
+        // so children may not yet be in the DOM when this effect fires. Fall back to
+        // a MutationObserver + rAF loop to catch the first real content commit.
         const restore = pendingRestoreRef.current
         if (restore) {
             const messagesEl = viewport.querySelector('.happy-thread-messages')
-            if (messagesEl && messagesEl.children.length > 0) {
-                viewport.scrollTop = restore.scrollTop
+            const applyRestore = () => {
+                if (!pendingRestoreRef.current) return false
+                const vp = viewportRef.current
+                const el = vp?.querySelector('.happy-thread-messages')
+                if (!vp || !el || el.children.length === 0) return false
+                vp.scrollTop = pendingRestoreRef.current.scrollTop
                 pendingRestoreRef.current = null
                 settlingRef.current = false
+                return true
             }
+            if (messagesEl && messagesEl.children.length > 0) {
+                applyRestore()
+                return
+            }
+            // Defer: observe until children appear, then restore
+            const host = messagesEl ?? viewport
+            const observer = new MutationObserver(() => {
+                if (applyRestore()) observer.disconnect()
+            })
+            observer.observe(host, { childList: true, subtree: true })
+            setTimeout(() => observer.disconnect(), 5000)
             return
         }
         // Stay pinned to bottom only when the user is already at bottom.
