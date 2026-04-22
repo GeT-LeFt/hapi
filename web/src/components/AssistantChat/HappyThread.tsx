@@ -94,6 +94,7 @@ export function HappyThread(props: {
     const onAtBottomChangeRef = useRef(props.onAtBottomChange)
     const onFlushPendingRef = useRef(props.onFlushPending)
     const forceScrollTokenRef = useRef(props.forceScrollToken)
+    const settlingRef = useRef(true)
 
     // Smart scroll state: autoScroll enabled when user is near bottom
     const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
@@ -135,6 +136,14 @@ export function HappyThread(props: {
                 if (!autoScrollEnabledRef.current) setAutoScrollEnabled(true)
             } else if (autoScrollEnabledRef.current) {
                 setAutoScrollEnabled(false)
+            }
+
+            // During settling (initial mount / session switch), don't flip atBottom
+            // to false — fetchLatestMessages races with the first layout scroll and
+            // would shunt server messages into "pending" if we report away-from-bottom
+            // before content has been positioned.
+            if (settlingRef.current && !isNearBottom) {
+                return
             }
 
             if (isNearBottom !== atBottomRef.current) {
@@ -188,9 +197,11 @@ export function HappyThread(props: {
 
     // Reset state when session changes
     useEffect(() => {
+        settlingRef.current = true
         setAutoScrollEnabled(true)
         atBottomRef.current = true
         onAtBottomChangeRef.current(true)
+        onFlushPendingRef.current()
         forceScrollTokenRef.current = props.forceScrollToken
     }, [props.sessionId])
 
@@ -319,6 +330,7 @@ export function HappyThread(props: {
                 atBottomRef.current = false
                 setAutoScrollEnabled(false)
                 onAtBottomChangeRef.current(false)
+                settlingRef.current = false
                 done = true
             } else {
                 viewport.scrollTop = viewport.scrollHeight
@@ -332,6 +344,7 @@ export function HappyThread(props: {
 
         const timer = setTimeout(() => {
             observer.disconnect()
+            settlingRef.current = false
         }, shouldRestore ? 500 : 2000)
 
         return () => {
