@@ -188,6 +188,8 @@ function SessionsPage() {
                             flushSync(() => {
                                 setLastViewedSessionId(sessionId)
                             })
+                            const vp = document.querySelector('.mobile-slide-panel-right .app-scroll-y')
+                            if (vp) vp.scrollTop = vp.scrollHeight
                             startViewNav('forward', () => navigate({
                                 to: '/sessions/$sessionId',
                                 params: { sessionId },
