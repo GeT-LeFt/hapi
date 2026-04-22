@@ -49,6 +49,9 @@ function MessageSkeleton() {
     )
 }
 
+const scrollCache = new Map<string, { scrollTop: number; atBottom: boolean }>()
+const SCROLL_CACHE_MAX = 100
+
 const THREAD_MESSAGE_COMPONENTS = {
     UserMessage: HappyUserMessage,
     AssistantMessage: HappyAssistantMessage,
@@ -166,6 +169,23 @@ export function HappyThread(props: {
         onFlushPendingRef.current()
     }, [])
 
+    // Save scroll position before unmount so it can be restored on revisit
+    useLayoutEffect(() => {
+        return () => {
+            const viewport = viewportRef.current
+            if (viewport) {
+                scrollCache.set(props.sessionId, {
+                    scrollTop: viewport.scrollTop,
+                    atBottom: atBottomRef.current
+                })
+                if (scrollCache.size > SCROLL_CACHE_MAX) {
+                    const oldest = scrollCache.keys().next().value
+                    if (oldest) scrollCache.delete(oldest)
+                }
+            }
+        }
+    }, [props.sessionId])
+
     // Reset state when session changes
     useEffect(() => {
         setAutoScrollEnabled(true)
@@ -268,11 +288,12 @@ export function HappyThread(props: {
         }
     }, [props.messagesVersion])
 
-    // Handle scroll-to-bottom on session switch / initial mount.
+    // Handle scroll restore on session switch / initial mount.
     // ThreadPrimitive.Messages renders one cycle after messagesVersion changes
     // (assistant-ui runtime updates via useEffect), so useLayoutEffect on
     // messagesVersion fires before messages are in the DOM.
-    // Use MutationObserver to detect actual content appearing.
+    // Use MutationObserver to detect actual content appearing, then restore
+    // the cached scroll position (or pin to bottom if user was at bottom).
     useEffect(() => {
         const viewport = viewportRef.current
         if (!viewport) return
@@ -280,19 +301,29 @@ export function HappyThread(props: {
         const messagesEl = viewport.querySelector('.happy-thread-messages')
         if (!messagesEl) return
 
-        if (messagesEl.children.length > 0) {
-            if (atBottomRef.current) {
+        const cached = scrollCache.get(props.sessionId)
+        scrollCache.delete(props.sessionId)
+
+        const restoreScroll = () => {
+            if (cached && !cached.atBottom) {
+                viewport.scrollTop = cached.scrollTop
+                atBottomRef.current = false
+                setAutoScrollEnabled(false)
+                onAtBottomChangeRef.current(false)
+            } else {
                 viewport.scrollTop = viewport.scrollHeight
             }
+        }
+
+        if (messagesEl.children.length > 0) {
+            restoreScroll()
             return
         }
 
         const observer = new MutationObserver(() => {
             if (messagesEl.children.length > 0) {
                 observer.disconnect()
-                if (atBottomRef.current) {
-                    viewport.scrollTop = viewport.scrollHeight
-                }
+                restoreScroll()
             }
         })
 
