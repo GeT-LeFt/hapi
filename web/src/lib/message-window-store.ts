@@ -373,12 +373,16 @@ export async function fetchLatestMessages(api: ApiClient, sessionId: string): Pr
     if (initial.isLoading) {
         return
     }
+    // Snapshot atBottom before the async gap — scroll events during the fetch
+    // can flip atBottom to false, causing server messages to land in "pending"
+    // instead of being rendered directly.
+    const wasAtBottom = initial.atBottom
     updateState(sessionId, (prev) => buildState(prev, { isLoading: true, warning: null }))
 
     try {
         const response = await api.getMessages(sessionId, { limit: PAGE_SIZE, beforeSeq: null })
         updateState(sessionId, (prev) => {
-            if (prev.atBottom) {
+            if (wasAtBottom || prev.atBottom) {
                 const merged = mergeMessages(prev.messages, [...prev.pending, ...response.messages])
                 const trimmed = trimVisible(merged, 'append')
                 return buildState(prev, {
