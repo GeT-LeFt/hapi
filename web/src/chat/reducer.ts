@@ -91,20 +91,32 @@ export function reduceChatBlocks(
         }
     }
 
-    // Calculate latest usage from messages (find the most recent message with usage data)
+    // Calculate cumulative usage across all messages and latest context size
     let latestUsage: LatestUsage | null = null
-    for (let i = normalized.length - 1; i >= 0; i--) {
-        const msg = normalized[i]
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
+    let totalCacheCreation = 0
+    let totalCacheRead = 0
+    let latestContextSize = 0
+    let latestTimestamp = 0
+    for (const msg of normalized) {
         if (msg.usage) {
-            latestUsage = {
-                inputTokens: msg.usage.input_tokens,
-                outputTokens: msg.usage.output_tokens,
-                cacheCreation: msg.usage.cache_creation_input_tokens ?? 0,
-                cacheRead: msg.usage.cache_read_input_tokens ?? 0,
-                contextSize: calculateContextSize(msg.usage),
-                timestamp: msg.createdAt
-            }
-            break
+            totalInputTokens += msg.usage.input_tokens
+            totalOutputTokens += msg.usage.output_tokens
+            totalCacheCreation += msg.usage.cache_creation_input_tokens ?? 0
+            totalCacheRead += msg.usage.cache_read_input_tokens ?? 0
+            latestContextSize = calculateContextSize(msg.usage)
+            latestTimestamp = msg.createdAt
+        }
+    }
+    if (latestTimestamp > 0) {
+        latestUsage = {
+            inputTokens: totalInputTokens,
+            outputTokens: totalOutputTokens,
+            cacheCreation: totalCacheCreation,
+            cacheRead: totalCacheRead,
+            contextSize: latestContextSize,
+            timestamp: latestTimestamp
         }
     }
 
