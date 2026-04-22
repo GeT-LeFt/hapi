@@ -314,13 +314,14 @@ export function HappyThread(props: {
                 const target = pendingRestoreRef.current.scrollTop
                 vp.scrollTop = target
                 pendingRestoreRef.current = null
-                settlingRef.current = false
-                // Layout may not be stable yet (scrollHeight still growing),
-                // so re-apply after paint to defeat any clamp or library reset
+                // Keep settlingRef true until after paint — scrollHeight may not
+                // be final yet (clamps scrollTop to 0), and IntersectionObserver
+                // would fire loadMore at scrollTop=0, racing the restore.
                 requestAnimationFrame(() => {
                     if (vp.scrollTop !== target) {
                         vp.scrollTop = target
                     }
+                    settlingRef.current = false
                 })
                 return true
             }
