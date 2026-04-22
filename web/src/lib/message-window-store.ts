@@ -341,6 +341,7 @@ export function subscribeMessageWindow(sessionId: string, listener: () => void):
 }
 
 export function clearMessageWindow(sessionId: string): void {
+    console.log('[STORE] clearMessageWindow', sessionId.slice(0, 8))
     clearPendingVisibilityCache(sessionId)
     if (!states.has(sessionId)) {
         return
@@ -371,17 +372,20 @@ export function seedMessageWindowFromSession(fromSessionId: string, toSessionId:
 export async function fetchLatestMessages(api: ApiClient, sessionId: string): Promise<void> {
     const initial = getState(sessionId)
     if (initial.isLoading) {
+        console.log('[STORE] fetchLatestMessages SKIP (already loading)', sessionId.slice(0, 8))
         return
     }
     // Snapshot atBottom before the async gap — scroll events during the fetch
     // can flip atBottom to false, causing server messages to land in "pending"
     // instead of being rendered directly.
     const wasAtBottom = initial.atBottom
+    console.log('[STORE] fetchLatestMessages START', sessionId.slice(0, 8), 'wasAtBottom=', wasAtBottom, 'msgs=', initial.messages.length, 'pending=', initial.pending.length)
     updateState(sessionId, (prev) => buildState(prev, { isLoading: true, warning: null }))
 
     try {
         const response = await api.getMessages(sessionId, { limit: PAGE_SIZE, beforeSeq: null })
         updateState(sessionId, (prev) => {
+            console.log('[STORE] fetchLatestMessages RESOLVE', sessionId.slice(0, 8), 'wasAtBottom=', wasAtBottom, 'prev.atBottom=', prev.atBottom, 'responseMsgs=', response.messages.length, 'prevMsgs=', prev.messages.length, 'prevPending=', prev.pending.length)
             if (wasAtBottom || prev.atBottom) {
                 const merged = mergeMessages(prev.messages, [...prev.pending, ...response.messages])
                 const trimmed = trimVisible(merged, 'append')
@@ -443,6 +447,7 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
     if (incoming.length === 0) {
         return
     }
+    console.log('[STORE] ingestIncomingMessages', sessionId.slice(0, 8), 'count=', incoming.length)
     updateState(sessionId, (prev) => {
         if (prev.atBottom) {
             const merged = mergeMessages(prev.messages, incoming)
@@ -478,6 +483,7 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
 
 export function flushPendingMessages(sessionId: string): boolean {
     const current = getState(sessionId)
+    console.log('[STORE] flushPendingMessages', sessionId.slice(0, 8), 'pending=', current.pending.length, 'overflow=', current.pendingOverflowVisibleCount)
     if (current.pending.length === 0 && current.pendingOverflowVisibleCount === 0) {
         return false
     }
@@ -498,6 +504,7 @@ export function flushPendingMessages(sessionId: string): boolean {
 }
 
 export function setAtBottom(sessionId: string, atBottom: boolean): void {
+    console.log('[STORE] setAtBottom', sessionId.slice(0, 8), atBottom)
     updateState(sessionId, (prev) => {
         if (prev.atBottom === atBottom) {
             return prev
