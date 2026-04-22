@@ -451,7 +451,8 @@ const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
                         {basename(path)}
                     </div>
                 ) : null}
-                {images.length > 0 ? <ResultImages result={result} /> : <CodeBlock code={file.content} language="text" />}
+                <CodeBlock code={file.content} language="text" />
+                {images.length > 0 ? <ResultImages result={result} /> : null}
                 <RawJsonDevOnly value={result} />
             </>
         )
