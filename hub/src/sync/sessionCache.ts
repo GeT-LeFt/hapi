@@ -362,6 +362,37 @@ export class SessionCache {
         this.publisher.emit({ type: 'session-updated', sessionId, data: session })
     }
 
+    syncCurrentMcpProfile(sessionId: string, currentMcpProfile: string): void {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
+            if (!session?.metadata) {
+                return
+            }
+            if (session.metadata.currentMcpProfile === currentMcpProfile) {
+                return
+            }
+
+            const result = this.store.sessions.updateSessionMetadata(
+                sessionId,
+                { ...session.metadata, currentMcpProfile },
+                session.metadataVersion,
+                session.namespace,
+                { touchUpdatedAt: false }
+            )
+
+            if (result.result === 'success') {
+                this.refreshSession(sessionId)
+                return
+            }
+
+            if (result.result === 'error') {
+                throw new Error('Failed to update session MCP profile')
+            }
+
+            this.refreshSession(sessionId)
+        }
+    }
+
     async renameSession(sessionId: string, name: string): Promise<void> {
         const session = this.sessions.get(sessionId)
         if (!session) {

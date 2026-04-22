@@ -37,7 +37,8 @@ export const MachineMetadataSchema = z.object({
     homeDir: z.string(),
     happyHomeDir: z.string(),
     happyLibDir: z.string(),
-    apiProfiles: z.array(z.string()).optional()
+    apiProfiles: z.array(z.string()).optional(),
+    mcpProfiles: z.array(z.string()).optional()
 })
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>

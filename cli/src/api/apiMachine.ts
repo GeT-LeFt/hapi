@@ -18,6 +18,7 @@ import { registerCommonHandlers } from '../modules/common/registerCommonHandlers
 import type { SpawnSessionOptions, SpawnSessionResult } from '../modules/common/rpcTypes'
 import { applyVersionedAck } from './versionedUpdate'
 import { buildSocketIoExtraHeaderOptions } from './hubExtraHeaders'
+import { switchProfile } from '@/utils/mcpProfile'
 
 interface ServerToRunnerEvents {
     update: (data: Update) => void
@@ -109,6 +110,20 @@ export class ApiMachineClient {
             }
             await cleanupBlobDirBySessionId(sessionId)
             return { success: true }
+        })
+
+        this.rpcHandlerManager.registerHandler<{ profile?: string; mcpJsonPath?: string }, { ok: true; currentMcpProfile: string } | { ok: false; error: string }>('switch-mcp-profile', async (params) => {
+            const profile = typeof params?.profile === 'string' ? params.profile : ''
+            const mcpJsonPath = typeof params?.mcpJsonPath === 'string' ? params.mcpJsonPath : ''
+
+            if (!profile) {
+                return { ok: false, error: 'Invalid profile name' }
+            }
+            if (!mcpJsonPath) {
+                return { ok: false, error: 'Invalid mcpJsonPath' }
+            }
+
+            return switchProfile(mcpJsonPath, profile)
         })
 
         void runBlobGC()

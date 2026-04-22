@@ -50,14 +50,25 @@ function createSession(overrides?: Partial<Session>): Session {
     }
 }
 
-function createApp(session: Session) {
+function createApp(
+    session: Session,
+    overrides?: {
+        reloadMcpProfile?: (sessionId: string, namespace: string, profile: string) => Promise<unknown>
+    }
+) {
     const applySessionConfigCalls: Array<[string, Record<string, unknown>]> = []
+    const reloadMcpProfileCalls: Array<[string, string, string]> = []
     const applySessionConfig = async (sessionId: string, config: Record<string, unknown>) => {
         applySessionConfigCalls.push([sessionId, config])
     }
+    const reloadMcpProfile = overrides?.reloadMcpProfile ?? (async (sessionId: string, namespace: string, profile: string) => {
+        reloadMcpProfileCalls.push([sessionId, namespace, profile])
+        return { type: 'success', sessionId, currentMcpProfile: profile }
+    })
     const engine = {
         resolveSessionAccess: () => ({ ok: true, sessionId: session.id, session }),
-        applySessionConfig
+        applySessionConfig,
+        reloadMcpProfile
     } as Partial<SyncEngine>
 
     const app = new Hono<WebAppEnv>()
@@ -67,7 +78,7 @@ function createApp(session: Session) {
     })
     app.route('/api', createSessionsRoutes(() => engine as SyncEngine))
 
-    return { app, applySessionConfigCalls }
+    return { app, applySessionConfigCalls, reloadMcpProfileCalls }
 }
 
 describe('sessions routes', () => {
@@ -232,5 +243,85 @@ describe('sessions routes', () => {
         expect(applySessionConfigCalls).toEqual([
             ['session-1', { effort: 'max' }]
         ])
+    })
+
+    it('maps MCP reload success response', async () => {
+        const session = createSession({
+            metadata: {
+                path: '/tmp/project',
+                host: 'localhost',
+                flavor: 'claude',
+                mcpJsonPath: '/tmp/project/.mcp.json'
+            }
+        })
+        const { app, reloadMcpProfileCalls } = createApp(session)
+
+        const response = await app.request('/api/sessions/session-1/reload-mcp', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ profile: 'core' })
+        })
+
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual({
+            ok: true,
+            sessionId: 'session-1',
+            currentMcpProfile: 'core'
+        })
+        expect(reloadMcpProfileCalls).toEqual([
+            ['session-1', 'default', 'core']
+        ])
+    })
+
+    it('maps non-Claude MCP reload failures to 400', async () => {
+        const { app } = createApp(createSession(), {
+            reloadMcpProfile: async () => ({
+                type: 'error',
+                message: 'MCP reload is only supported for Claude sessions',
+                code: 'not_supported'
+            })
+        })
+
+        const response = await app.request('/api/sessions/session-1/reload-mcp', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ profile: 'core' })
+        })
+
+        expect(response.status).toBe(400)
+        expect(await response.json()).toEqual({
+            error: 'MCP reload is only supported for Claude sessions',
+            code: 'not_supported'
+        })
+    })
+
+    it('maps locked MCP reload failures to 423', async () => {
+        const session = createSession({
+            metadata: {
+                path: '/tmp/project',
+                host: 'localhost',
+                flavor: 'claude',
+                mcpJsonPath: '/tmp/project/.mcp.json'
+            }
+        })
+        const { app } = createApp(session, {
+            reloadMcpProfile: async () => ({
+                type: 'error',
+                message: 'Reload already in progress',
+                code: 'locked'
+            })
+        })
+
+        const response = await app.request('/api/sessions/session-1/reload-mcp', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ profile: 'core' })
+        })
+
+        expect(response.status).toBe(423)
+        expect(await response.json()).toEqual({
+            error: 'Reload already in progress',
+            code: 'locked'
+        })
     })
 })

@@ -15,6 +15,7 @@ import type {
     PushSubscriptionPayload,
     PushUnsubscribePayload,
     PushVapidPublicKeyResponse,
+    ReloadMcpProfileResponse,
     SlashCommandsResponse,
     SkillsResponse,
     SpawnResponse,
@@ -288,6 +289,16 @@ export class ApiClient {
             { method: 'POST' }
         )
         return response.sessionId
+    }
+
+    async reloadMcpProfile(sessionId: string, profile: string): Promise<ReloadMcpProfileResponse> {
+        return await this.request<ReloadMcpProfileResponse>(
+            `/api/sessions/${encodeURIComponent(sessionId)}/reload-mcp`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ profile })
+            }
+        )
     }
 
     async sendMessage(sessionId: string, text: string, localId?: string | null, attachments?: AttachmentMetadata[]): Promise<void> {

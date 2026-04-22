@@ -55,6 +55,10 @@ export type RpcPathExistsResponse = {
     exists: Record<string, boolean>
 }
 
+export type RpcSwitchMcpProfileResponse =
+    | { ok: true; currentMcpProfile: string }
+    | { ok: false; error: string }
+
 export class RpcGateway {
     constructor(
         private readonly io: Server,
@@ -186,6 +190,30 @@ export class RpcGateway {
             exists[key] = value === true
         }
         return exists
+    }
+
+    async switchMcpProfile(
+        machineId: string,
+        input: { profile: string; mcpJsonPath: string }
+    ): Promise<RpcSwitchMcpProfileResponse> {
+        const result = await this.machineRpc(machineId, 'switch-mcp-profile', input) as RpcSwitchMcpProfileResponse | unknown
+        if (!result || typeof result !== 'object' || typeof (result as { ok?: unknown }).ok !== 'boolean') {
+            throw new Error('Unexpected switch-mcp-profile result')
+        }
+
+        if ((result as { ok: boolean }).ok) {
+            const currentMcpProfile = (result as { currentMcpProfile?: unknown }).currentMcpProfile
+            if (typeof currentMcpProfile !== 'string' || currentMcpProfile.length === 0) {
+                throw new Error('Invalid switch-mcp-profile success result')
+            }
+            return { ok: true, currentMcpProfile }
+        }
+
+        const error = (result as { error?: unknown }).error
+        if (typeof error !== 'string' || error.length === 0) {
+            throw new Error('Invalid switch-mcp-profile error result')
+        }
+        return { ok: false, error }
     }
 
     async getGitStatus(sessionId: string, cwd?: string): Promise<RpcCommandResponse> {
