@@ -293,7 +293,7 @@ export function HappyThread(props: {
     // (assistant-ui runtime updates via useEffect), so useLayoutEffect on
     // messagesVersion fires before messages are in the DOM.
     // Use MutationObserver to detect actual content appearing, then restore
-    // the cached scroll position (or pin to bottom if user was at bottom).
+    // the cached scroll position (or keep pinning to bottom as content streams in).
     useEffect(() => {
         const viewport = viewportRef.current
         if (!viewport) return
@@ -303,32 +303,41 @@ export function HappyThread(props: {
 
         const cached = scrollCache.get(props.sessionId)
         scrollCache.delete(props.sessionId)
+        const shouldRestore = cached && !cached.atBottom
 
-        const restoreScroll = () => {
-            if (cached && !cached.atBottom) {
-                viewport.scrollTop = cached.scrollTop
+        if (!shouldRestore) {
+            onFlushPendingRef.current()
+        }
+
+        let done = false
+
+        const onContent = () => {
+            if (done || messagesEl.children.length === 0) return
+
+            if (shouldRestore) {
+                viewport.scrollTop = cached!.scrollTop
                 atBottomRef.current = false
                 setAutoScrollEnabled(false)
                 onAtBottomChangeRef.current(false)
+                done = true
             } else {
                 viewport.scrollTop = viewport.scrollHeight
             }
         }
 
-        if (messagesEl.children.length > 0) {
-            restoreScroll()
-            return
-        }
+        onContent()
 
-        const observer = new MutationObserver(() => {
-            if (messagesEl.children.length > 0) {
-                observer.disconnect()
-                restoreScroll()
-            }
-        })
-
+        const observer = new MutationObserver(onContent)
         observer.observe(messagesEl, { childList: true, subtree: true })
-        return () => observer.disconnect()
+
+        const timer = setTimeout(() => {
+            observer.disconnect()
+        }, shouldRestore ? 500 : 2000)
+
+        return () => {
+            observer.disconnect()
+            clearTimeout(timer)
+        }
     }, [])
 
     useEffect(() => {
