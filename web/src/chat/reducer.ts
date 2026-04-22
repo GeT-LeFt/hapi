@@ -91,9 +91,11 @@ export function reduceChatBlocks(
         }
     }
 
-    // Calculate cumulative usage across all messages and latest context size
+    // inputTokens shows the latest turn's full context (input + cache_read + cache_creation),
+    // matching the CLI's "108Kin" which reflects what was actually sent to the model
+    // (including system prompt, MCP tool definitions, and conversation history).
+    // outputTokens accumulates across all messages in the session.
     let latestUsage: LatestUsage | null = null
-    let totalInputTokens = 0
     let totalOutputTokens = 0
     let totalCacheCreation = 0
     let totalCacheRead = 0
@@ -101,7 +103,6 @@ export function reduceChatBlocks(
     let latestTimestamp = 0
     for (const msg of normalized) {
         if (msg.usage) {
-            totalInputTokens += msg.usage.input_tokens
             totalOutputTokens += msg.usage.output_tokens
             totalCacheCreation += msg.usage.cache_creation_input_tokens ?? 0
             totalCacheRead += msg.usage.cache_read_input_tokens ?? 0
@@ -111,7 +112,7 @@ export function reduceChatBlocks(
     }
     if (latestTimestamp > 0) {
         latestUsage = {
-            inputTokens: totalInputTokens,
+            inputTokens: latestContextSize,
             outputTokens: totalOutputTokens,
             cacheCreation: totalCacheCreation,
             cacheRead: totalCacheRead,
