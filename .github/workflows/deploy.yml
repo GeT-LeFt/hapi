@@ -144,6 +144,7 @@ jobs:
             RUNNER_CONTAINER="hapi-staging-runner"
             docker stop -t 10 "$RUNNER_CONTAINER" 2>/dev/null || true
             docker rm "$RUNNER_CONTAINER" 2>/dev/null || true
+            rm -f /root/.hapi-staging/runner.state.json /root/.hapi-staging/runner.state.json.lock
 
             docker run -d \
               --name "$RUNNER_CONTAINER" \
@@ -252,6 +253,7 @@ jobs:
             RUNNER_CONTAINER="hapi-runner"
             docker stop -t 10 "$RUNNER_CONTAINER" 2>/dev/null || true
             docker rm "$RUNNER_CONTAINER" 2>/dev/null || true
+            rm -f /root/.hapi/runner.state.json /root/.hapi/runner.state.json.lock
 
             docker run -d \
               --name "$RUNNER_CONTAINER" \
