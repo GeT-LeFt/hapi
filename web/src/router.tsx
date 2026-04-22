@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
     Navigate,
@@ -135,6 +135,26 @@ function SessionsPage() {
     const { markRead } = useUnread()
     const { removeBySession } = useNotification()
 
+    // Defer mounting the heavy right panel on mobile until the slide-in
+    // animation has had time to start. Mounting the chat + message list
+    // synchronously on click saturates the main thread and eats the transition.
+    const [rightReady, setRightReady] = useState(true)
+    useEffect(() => {
+        if (isSessionsIndex) {
+            setRightReady(true)
+            return
+        }
+        if (typeof window === 'undefined') return
+        const isMobile = window.matchMedia('(max-width: 1023.98px)').matches
+        if (!isMobile) {
+            setRightReady(true)
+            return
+        }
+        setRightReady(false)
+        const id = window.setTimeout(() => setRightReady(true), 360)
+        return () => window.clearTimeout(id)
+    }, [isSessionsIndex])
+
     useEffect(() => {
         if (selectedSessionId) {
             markRead(selectedSessionId)
@@ -210,7 +230,7 @@ function SessionsPage() {
                 className="mobile-slide-panel mobile-slide-panel-right flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]"
             >
                 <div className="flex-1 min-h-0">
-                    <Outlet />
+                    {rightReady ? <Outlet /> : null}
                 </div>
             </div>
         </div>
