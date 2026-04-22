@@ -34,6 +34,7 @@ import { useNotification } from '@/lib/notification-context'
 import { useTranslation } from '@/lib/use-translation'
 import { fetchLatestMessages, seedMessageWindowFromSession } from '@/lib/message-window-store'
 import { clearDraftsAfterSend } from '@/lib/clearDraftsAfterSend'
+import { startViewNav } from '@/lib/startViewNav'
 import type { Machine } from '@/types/api'
 import FilesPage from '@/routes/sessions/files'
 import FilePage from '@/routes/sessions/file'
@@ -184,10 +185,10 @@ function SessionsPage() {
                     <SessionList
                         sessions={sessions}
                         selectedSessionId={selectedSessionId}
-                        onSelect={(sessionId) => navigate({
+                        onSelect={(sessionId) => startViewNav('forward', () => navigate({
                             to: '/sessions/$sessionId',
                             params: { sessionId },
-                        })}
+                        }))}
                         onNewSession={() => navigate({ to: '/sessions/new' })}
                         onRefresh={handleRefresh}
                         isLoading={isLoading}

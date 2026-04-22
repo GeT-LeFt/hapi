@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useLocation, useNavigate, useRouter } from '@tanstack/react-router'
+import { startViewNav } from '@/lib/startViewNav'
 
 export function useAppGoBack(): () => void {
     const navigate = useNavigate()
@@ -36,7 +37,11 @@ export function useAppGoBack(): () => void {
         // For session routes, navigate to parent path
         if (pathname.startsWith('/sessions/')) {
             const parentPath = pathname.replace(/\/[^/]+$/, '') || '/sessions'
-            navigate({ to: parentPath })
+            if (parentPath === '/sessions') {
+                startViewNav('back', () => navigate({ to: parentPath }))
+            } else {
+                navigate({ to: parentPath })
+            }
             return
         }
 
