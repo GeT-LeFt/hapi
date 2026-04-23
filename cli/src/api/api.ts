@@ -80,7 +80,9 @@ export class ApiClient {
             modelReasoningEffort: raw.modelReasoningEffort,
             effort: raw.effort,
             permissionMode: raw.permissionMode,
-            collaborationMode: raw.collaborationMode
+            collaborationMode: raw.collaborationMode,
+            pinned: raw.pinned,
+            pinnedAt: raw.pinnedAt
         }
     }
 
