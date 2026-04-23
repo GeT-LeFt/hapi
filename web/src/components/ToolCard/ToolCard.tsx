@@ -1,7 +1,7 @@
 import type { ToolCallBlock } from '@/chat/types'
 import type { ApiClient } from '@/api/client'
 import type { SessionMetadataSummary } from '@/types/api'
-import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { isObject, safeStringify } from '@hapi/protocol'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CodeBlock } from '@/components/CodeBlock'
@@ -332,7 +332,30 @@ function ToolCardInner(props: ToolCardProps) {
         permission.status === 'pending'
         || ((permission.status === 'denied' || permission.status === 'canceled') && Boolean(permission.reason))
     ))
-    const hasBody = showInline || taskSummary !== null || showsPermissionFooter
+    // Hold permission footer visible for at least 500ms so the user can interact
+    const [stableShowsPermission, setStableShowsPermission] = useState(showsPermissionFooter)
+    const permissionShownAtRef = useRef<number | null>(null)
+    useEffect(() => {
+        if (showsPermissionFooter) {
+            setStableShowsPermission(true)
+            permissionShownAtRef.current = Date.now()
+            return undefined
+        }
+        if (permissionShownAtRef.current !== null) {
+            const elapsed = Date.now() - permissionShownAtRef.current
+            if (elapsed < 500) {
+                const timer = setTimeout(() => {
+                    setStableShowsPermission(false)
+                    permissionShownAtRef.current = null
+                }, 500 - elapsed)
+                return () => clearTimeout(timer)
+            }
+        }
+        setStableShowsPermission(false)
+        permissionShownAtRef.current = null
+        return undefined
+    }, [showsPermissionFooter])
+    const hasBody = showInline || taskSummary !== null || stableShowsPermission
     const stateColor = statusColorClass(props.block.tool.state)
     const { suppressFocusRing, onTriggerPointerDown, onTriggerKeyDown, onTriggerBlur } = usePointerFocusRing()
 

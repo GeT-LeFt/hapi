@@ -57,6 +57,12 @@ export default {
   // Session header
   'session.title': '文件',
   'session.more': '更多操作',
+  'session.mcp.label': 'MCP 配置',
+  'session.mcp.current': '当前：{profile}',
+  'session.mcp.currentUnknown': '当前：未知',
+  'session.mcp.switch': '切换',
+  'session.mcp.switching': '切换中…',
+  'session.mcp.failed.title': 'MCP 切换失败',
 
   // Session actions
   'session.action.rename': '重命名',

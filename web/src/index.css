@@ -205,6 +205,90 @@ body {
     opacity: 0.6;
 }
 
+/* Mobile slide transition between session list and chat detail.
+   On mobile (<1024px), the two panels stack absolutely within the container and
+   slide horizontally via transform. On desktop, these rules don't apply and the
+   original flex layout is preserved. */
+@media (max-width: 1023.98px) {
+    .mobile-slide-container {
+        position: relative;
+        overflow: hidden;
+    }
+    .mobile-slide-panel {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        transform: translate3d(0, 0, 0);
+        backface-visibility: hidden;
+        transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
+        will-change: transform;
+        contain: layout paint;
+        isolation: isolate;
+    }
+    .mobile-slide-panel-left {
+        transform: translate3d(0, 0, 0);
+    }
+    .mobile-slide-panel-left[data-mobile-hidden] {
+        transform: translate3d(-100%, 0, 0);
+        pointer-events: none;
+    }
+    .mobile-slide-panel-right {
+        transform: translate3d(100%, 0, 0);
+        pointer-events: none;
+    }
+    .mobile-slide-panel-right:not([data-mobile-hidden]) {
+        transform: translate3d(0, 0, 0);
+        pointer-events: auto;
+    }
+}
+
+/* iOS-style push/pop transition via the View Transitions API.
+   Only applies on mobile widths and only while data-vt-dir is set by
+   startViewNav(). Falls back silently in browsers without support. */
+@media (max-width: 1023.98px) {
+    html[data-vt-dir] .mobile-slide-panel {
+        transition: none !important;
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation-duration: 340ms;
+        animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+        animation-fill-mode: both;
+        mix-blend-mode: normal;
+    }
+
+    html[data-vt-dir="forward"]::view-transition-old(root) {
+        animation-name: vt-old-forward;
+    }
+    html[data-vt-dir="forward"]::view-transition-new(root) {
+        animation-name: vt-new-forward;
+    }
+    html[data-vt-dir="back"]::view-transition-old(root) {
+        animation-name: vt-old-back;
+    }
+    html[data-vt-dir="back"]::view-transition-new(root) {
+        animation-name: vt-new-back;
+    }
+}
+
+@keyframes vt-new-forward {
+    from { transform: translate3d(100%, 0, 0); }
+    to   { transform: translate3d(0, 0, 0); }
+}
+@keyframes vt-old-forward {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(-30%, 0, 0); }
+}
+@keyframes vt-new-back {
+    from { transform: translate3d(-30%, 0, 0); }
+    to   { transform: translate3d(0, 0, 0); }
+}
+@keyframes vt-old-back {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(100%, 0, 0); }
+}
+
 /*
  * content-visibility: auto lets the browser skip layout/paint for messages
  * scrolled out of the viewport. Big win on Windows with long conversations (#310).

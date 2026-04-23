@@ -49,6 +49,9 @@ function MessageSkeleton() {
     )
 }
 
+const scrollCache = new Map<string, { scrollTop: number; atBottom: boolean }>()
+const SCROLL_CACHE_MAX = 100
+
 const THREAD_MESSAGE_COMPONENTS = {
     UserMessage: HappyUserMessage,
     AssistantMessage: HappyAssistantMessage,
@@ -91,6 +94,8 @@ export function HappyThread(props: {
     const onAtBottomChangeRef = useRef(props.onAtBottomChange)
     const onFlushPendingRef = useRef(props.onFlushPending)
     const forceScrollTokenRef = useRef(props.forceScrollToken)
+    const settlingRef = useRef(true)
+    const pendingRestoreRef = useRef<{ scrollTop: number } | null>(null)
 
     // Smart scroll state: autoScroll enabled when user is near bottom
     const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
@@ -134,6 +139,14 @@ export function HappyThread(props: {
                 setAutoScrollEnabled(false)
             }
 
+            // During settling (initial mount / session switch), don't flip atBottom
+            // to false — fetchLatestMessages races with the first layout scroll and
+            // would shunt server messages into "pending" if we report away-from-bottom
+            // before content has been positioned.
+            if (settlingRef.current && !isNearBottom) {
+                return
+            }
+
             if (isNearBottom !== atBottomRef.current) {
                 atBottomRef.current = isNearBottom
                 onAtBottomChangeRef.current(isNearBottom)
@@ -166,12 +179,41 @@ export function HappyThread(props: {
         onFlushPendingRef.current()
     }, [])
 
+    // Save scroll position before unmount so it can be restored on revisit
+    useLayoutEffect(() => {
+        return () => {
+            const viewport = viewportRef.current
+            if (viewport) {
+                scrollCache.set(props.sessionId, {
+                    scrollTop: viewport.scrollTop,
+                    atBottom: atBottomRef.current
+                })
+                if (scrollCache.size > SCROLL_CACHE_MAX) {
+                    const oldest = scrollCache.keys().next().value
+                    if (oldest) scrollCache.delete(oldest)
+                }
+            }
+        }
+    }, [props.sessionId])
+
     // Reset state when session changes
     useEffect(() => {
+        settlingRef.current = true
         setAutoScrollEnabled(true)
         atBottomRef.current = true
         onAtBottomChangeRef.current(true)
+        onFlushPendingRef.current()
         forceScrollTokenRef.current = props.forceScrollToken
+        const cached = scrollCache.get(props.sessionId)
+        if (cached && !cached.atBottom) {
+            pendingRestoreRef.current = { scrollTop: cached.scrollTop }
+            atBottomRef.current = false
+            setAutoScrollEnabled(false)
+            onAtBottomChangeRef.current(false)
+        } else {
+            pendingRestoreRef.current = null
+        }
+        scrollCache.delete(props.sessionId)
     }, [props.sessionId])
 
     useEffect(() => {
@@ -183,7 +225,7 @@ export function HappyThread(props: {
     }, [props.forceScrollToken, scrollToBottom])
 
     const handleLoadMore = useCallback(() => {
-        if (isLoadingMessagesRef.current || !hasMoreMessagesRef.current || isLoadingMoreRef.current || loadLockRef.current) {
+        if (isLoadingMessagesRef.current || !hasMoreMessagesRef.current || isLoadingMoreRef.current || loadLockRef.current || settlingRef.current) {
             return
         }
         const viewport = viewportRef.current
@@ -255,18 +297,80 @@ export function HappyThread(props: {
         }
         const pending = pendingScrollRef.current
         if (pending) {
+            if (settlingRef.current) {
+                pendingScrollRef.current = null
+                loadLockRef.current = false
+                return
+            }
             const delta = viewport.scrollHeight - pending.scrollHeight
             viewport.scrollTop = pending.scrollTop + delta
             pendingScrollRef.current = null
             loadLockRef.current = false
             return
         }
-        // Stay pinned to bottom only when the user is already at bottom.
-        // Replaces the library's resize-triggered scrollToBottom which ignored user intent.
+        const restore = pendingRestoreRef.current
+        if (restore) {
+            const messagesEl = viewport.querySelector('.happy-thread-messages')
+            const applyRestore = () => {
+                if (!pendingRestoreRef.current) return false
+                const vp = viewportRef.current
+                const el = vp?.querySelector('.happy-thread-messages')
+                if (!vp || !el || el.children.length === 0) return false
+                const target = pendingRestoreRef.current.scrollTop
+                vp.scrollTop = target
+                pendingRestoreRef.current = null
+                // scrollHeight may still be growing (partial render), so scrollTop
+                // gets clamped below target. Retry each frame until it sticks.
+                const retryRestore = (attempt: number) => {
+                    if (attempt > 10) {
+                        settlingRef.current = false
+                        return
+                    }
+                    requestAnimationFrame(() => {
+                        if (vp.scrollTop !== target && vp.scrollHeight > target) {
+                            vp.scrollTop = target
+                        }
+                        if (vp.scrollTop === target || attempt >= 5) {
+                            settlingRef.current = false
+                        } else {
+                            retryRestore(attempt + 1)
+                        }
+                    })
+                }
+                retryRestore(0)
+                return true
+            }
+            if (messagesEl && messagesEl.children.length > 0) {
+                applyRestore()
+                return
+            }
+            const host = messagesEl ?? viewport
+            const observer = new MutationObserver(() => {
+                if (applyRestore()) observer.disconnect()
+            })
+            observer.observe(host, { childList: true, subtree: true })
+            setTimeout(() => observer.disconnect(), 5000)
+            return
+        }
         if (atBottomRef.current) {
             viewport.scrollTop = viewport.scrollHeight
         }
     }, [props.messagesVersion])
+
+    // Scroll restore on session switch is handled in the useLayoutEffect above
+    // (driven by messagesVersion + pendingRestoreRef), which is more reliable than
+    // MutationObserver since it fires exactly when messages are committed to the DOM.
+    useEffect(() => {
+        if (pendingRestoreRef.current) {
+            // Don't flush pending while we're about to restore a non-bottom position
+            return
+        }
+        onFlushPendingRef.current()
+        const timer = setTimeout(() => {
+            settlingRef.current = false
+        }, 2000)
+        return () => clearTimeout(timer)
+    }, [])
 
     useEffect(() => {
         isLoadingMoreRef.current = props.isLoadingMoreMessages

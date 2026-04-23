@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiClient } from '@/api/client'
 import type { SessionMetadataSummary } from '@/types/api'
 import type { ChatToolCall, ToolPermission } from '@/chat/types'
@@ -104,10 +104,41 @@ export function PermissionFooter(props: {
 
     const codex = useMemo(() => isCodexSession(props.metadata, props.tool.name), [props.metadata, props.tool.name])
 
-    if (!permission) return null
+    // Prevent permission dialog from flashing: hold pending state for at least MIN_DISPLAY_MS
+    const MIN_DISPLAY_MS = 500
+    const [stablePermission, setStablePermission] = useState(permission)
+    const pendingShownAtRef = useRef<number | null>(null)
 
-    const summary = formatPermissionSummary(permission, props.tool.name, props.tool.input, codex, t)
-    const isPending = permission.status === 'pending'
+    useEffect(() => {
+        if (!permission) {
+            setStablePermission(permission)
+            pendingShownAtRef.current = null
+            return undefined
+        }
+        if (permission.status === 'pending') {
+            setStablePermission(permission)
+            pendingShownAtRef.current = Date.now()
+            return undefined
+        }
+        if (pendingShownAtRef.current !== null) {
+            const elapsed = Date.now() - pendingShownAtRef.current
+            if (elapsed < MIN_DISPLAY_MS) {
+                const timer = setTimeout(() => {
+                    setStablePermission(permission)
+                    pendingShownAtRef.current = null
+                }, MIN_DISPLAY_MS - elapsed)
+                return () => clearTimeout(timer)
+            }
+        }
+        setStablePermission(permission)
+        pendingShownAtRef.current = null
+        return undefined
+    }, [permission])
+
+    if (!stablePermission) return null
+
+    const summary = formatPermissionSummary(stablePermission, props.tool.name, props.tool.input, codex, t)
+    const isPending = stablePermission.status === 'pending'
 
     const run = async (action: () => Promise<void>, hapticType: 'success' | 'error') => {
         if (props.disabled) return
@@ -140,14 +171,14 @@ export function PermissionFooter(props: {
     const approve = async () => {
         if (!isPending || loading || loadingAllEdits || loadingForSession) return
         setLoading('allow')
-        await run(() => props.api.approvePermission(props.sessionId, permission.id), 'success')
+        await run(() => props.api.approvePermission(props.sessionId, stablePermission.id), 'success')
         setLoading(null)
     }
 
     const approveAllEdits = async () => {
         if (!isPending || loading || loadingAllEdits || loadingForSession) return
         setLoadingAllEdits(true)
-        await run(() => props.api.approvePermission(props.sessionId, permission.id, 'acceptEdits'), 'success')
+        await run(() => props.api.approvePermission(props.sessionId, stablePermission.id, 'acceptEdits'), 'success')
         setLoadingAllEdits(false)
     }
 
@@ -156,14 +187,14 @@ export function PermissionFooter(props: {
         setLoadingForSession(true)
         const command = toolName === 'Bash' ? getInputStringAny(props.tool.input, ['command', 'cmd']) : null
         const toolIdentifier = toolName === 'Bash' && command ? `Bash(${command})` : toolName
-        await run(() => props.api.approvePermission(props.sessionId, permission.id, { allowTools: [toolIdentifier] }), 'success')
+        await run(() => props.api.approvePermission(props.sessionId, stablePermission.id, { allowTools: [toolIdentifier] }), 'success')
         setLoadingForSession(false)
     }
 
     const deny = async () => {
         if (!isPending || loading || loadingAllEdits || loadingForSession) return
         setLoading('deny')
-        await run(() => props.api.denyPermission(props.sessionId, permission.id), 'success')
+        await run(() => props.api.denyPermission(props.sessionId, stablePermission.id), 'success')
         setLoading(null)
     }
 
@@ -171,31 +202,31 @@ export function PermissionFooter(props: {
         if (!isPending || loading || loadingForSession) return
         if (decision === 'approved_for_session') {
             setLoadingForSession(true)
-            await run(() => props.api.approvePermission(props.sessionId, permission.id, { decision }), 'success')
+            await run(() => props.api.approvePermission(props.sessionId, stablePermission.id, { decision }), 'success')
             setLoadingForSession(false)
             return
         }
         setLoading('allow')
-        await run(() => props.api.approvePermission(props.sessionId, permission.id, { decision }), 'success')
+        await run(() => props.api.approvePermission(props.sessionId, stablePermission.id, { decision }), 'success')
         setLoading(null)
     }
 
     const codexAbort = async () => {
         if (!isPending || loading || loadingForSession) return
         setLoading('abort')
-        await run(() => props.api.denyPermission(props.sessionId, permission.id, { decision: 'abort' }), 'success')
+        await run(() => props.api.denyPermission(props.sessionId, stablePermission.id, { decision: 'abort' }), 'success')
         setLoading(null)
     }
 
     if (!isPending) {
         // Keep the thread minimal: approval is already reflected by tool state/icon.
         // Only surface a short message when the permission was denied/canceled and we have a reason.
-        if (permission.status !== 'denied' && permission.status !== 'canceled') return null
-        if (!permission.reason) return null
+        if (stablePermission.status !== 'denied' && stablePermission.status !== 'canceled') return null
+        if (!stablePermission.reason) return null
 
         return (
             <div className="mt-2 text-xs text-red-600">
-                {permission.reason}
+                {stablePermission.reason}
             </div>
         )
     }

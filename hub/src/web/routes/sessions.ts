@@ -26,6 +26,10 @@ const effortSchema = z.object({
     effort: z.string().trim().min(1).nullable()
 })
 
+const reloadMcpSchema = z.object({
+    profile: z.string().trim().min(1)
+})
+
 const renameSessionSchema = z.object({
     name: z.string().min(1).max(255)
 })
@@ -112,11 +116,51 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             const status = result.code === 'no_machine_online' ? 503
                 : result.code === 'access_denied' ? 403
                     : result.code === 'session_not_found' ? 404
+                        : result.code === 'resume_timeout' ? 504
                         : 500
             return c.json({ error: result.message, code: result.code }, status)
         }
 
         return c.json({ type: 'success', sessionId: result.sessionId })
+    })
+
+    app.post('/sessions/:id/reload-mcp', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = reloadMcpSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        const namespace = c.get('namespace')
+        const result = await engine.reloadMcpProfile(sessionResult.sessionId, namespace, parsed.data.profile)
+        if (result.type === 'error') {
+            const status = result.code === 'session_not_found' ? 404
+                : result.code === 'access_denied' ? 403
+                    : result.code === 'session_inactive' || result.code === 'missing_mcp_json_path' ? 409
+                        : result.code === 'locked' ? 423
+                            : result.code === 'profile_not_found' ? 404
+                                : result.code === 'invalid_profile_name' || result.code === 'not_supported' ? 400
+                                    : result.code === 'no_machine_online' ? 503
+                                        : result.code === 'abort_timeout' || result.code === 'resume_timeout' ? 504
+                                            : 500
+            return c.json({ error: result.message, code: result.code }, status)
+        }
+
+        return c.json({
+            ok: true,
+            sessionId: result.sessionId,
+            currentMcpProfile: result.currentMcpProfile
+        })
     })
 
     app.post('/sessions/:id/upload', async (c) => {

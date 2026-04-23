@@ -6,6 +6,7 @@ import type {
     AttachmentMetadata,
     CodexCollaborationMode,
     DecryptedMessage,
+    Machine,
     PermissionMode,
     Session,
     SlashCommand
@@ -23,6 +24,7 @@ import { findUnsupportedCodexBuiltinSlashCommand } from '@/lib/codexSlashCommand
 import { useToast } from '@/lib/toast-context'
 import { useTranslation } from '@/lib/use-translation'
 import { SessionHeader } from '@/components/SessionHeader'
+import { SessionMcpProfileControl } from '@/components/SessionMcpProfileControl'
 import { TeamPanel } from '@/components/TeamPanel'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSessionActions } from '@/hooks/mutations/useSessionActions'
@@ -34,6 +36,7 @@ import { StickyTodoList } from '@/components/AssistantChat/StickyTodoList'
 export function SessionChat(props: {
     api: ApiClient
     session: Session
+    machine: Machine | null
     messages: DecryptedMessage[]
     messagesWarning: string | null
     hasMoreMessages: boolean
@@ -44,6 +47,7 @@ export function SessionChat(props: {
     messagesVersion: number
     onBack: () => void
     onRefresh: () => void
+    onSessionReloaded: (sessionId: string) => void
     onLoadMore: () => Promise<unknown>
     onSend: (text: string, attachments?: AttachmentMetadata[]) => void
     onFlushPending: () => void
@@ -67,11 +71,13 @@ export function SessionChat(props: {
     const {
         abortSession,
         switchSession,
+        reloadMcpProfile,
         setPermissionMode,
         setCollaborationMode,
         setModel,
         setModelReasoningEffort,
-        setEffort
+        setEffort,
+        isPending: isSessionActionPending
     } = useSessionActions(
         props.api,
         props.session.id,
@@ -303,6 +309,26 @@ export function SessionChat(props: {
         })
     }, [navigate, props.session.id])
 
+    const handleReloadMcpProfile = useCallback(async (profile: string) => {
+        try {
+            const result = await reloadMcpProfile(profile)
+            haptic.notification('success')
+            props.onRefresh()
+            if (result.sessionId !== props.session.id) {
+                props.onSessionReloaded(result.sessionId)
+            }
+        } catch (error) {
+            haptic.notification('error')
+            const message = error instanceof Error ? error.message : 'Failed to reload MCP profile'
+            addToast({
+                title: t('session.mcp.failed.title'),
+                body: message,
+                sessionId: props.session.id,
+                url: `/sessions/${props.session.id}`
+            })
+        }
+    }, [addToast, haptic, props.onRefresh, props.onSessionReloaded, props.session.id, reloadMcpProfile, t])
+
     const handleSend = useCallback((text: string, attachments?: AttachmentMetadata[]) => {
         if (agentFlavor === 'codex') {
             const unsupportedCommand = findUnsupportedCodexBuiltinSlashCommand(
@@ -363,6 +389,13 @@ export function SessionChat(props: {
                     </div>
                 </div>
             ) : null}
+
+            <SessionMcpProfileControl
+                session={props.session}
+                machine={props.machine}
+                isPending={isSessionActionPending}
+                onReload={handleReloadMcpProfile}
+            />
 
             <AssistantRuntimeProvider runtime={runtime}>
                 <div className="relative flex min-h-0 flex-1 flex-col">

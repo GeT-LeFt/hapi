@@ -373,12 +373,13 @@ export async function fetchLatestMessages(api: ApiClient, sessionId: string): Pr
     if (initial.isLoading) {
         return
     }
+    const isFirstLoad = initial.messages.length === 0 && initial.pending.length === 0
     updateState(sessionId, (prev) => buildState(prev, { isLoading: true, warning: null }))
 
     try {
         const response = await api.getMessages(sessionId, { limit: PAGE_SIZE, beforeSeq: null })
         updateState(sessionId, (prev) => {
-            if (prev.atBottom) {
+            if (isFirstLoad || prev.atBottom) {
                 const merged = mergeMessages(prev.messages, [...prev.pending, ...response.messages])
                 const trimmed = trimVisible(merged, 'append')
                 return buildState(prev, {

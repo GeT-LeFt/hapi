@@ -507,6 +507,109 @@ describe('session model', () => {
         }
     })
 
+    it('reloads MCP profile for active Claude sessions', async () => {
+        const store = new Store(':memory:')
+        const engine = new SyncEngine(
+            store,
+            {} as never,
+            new RpcRegistry(),
+            { broadcast() {} } as never
+        )
+
+        const events: SyncEvent[] = []
+        const unsubscribe = engine.subscribe((event) => events.push(event))
+
+        try {
+            const session = engine.getOrCreateSession(
+                'session-claude-reload',
+                {
+                    path: '/tmp/project',
+                    host: 'localhost',
+                    machineId: 'machine-1',
+                    flavor: 'claude',
+                    claudeSessionId: 'claude-thread-1',
+                    mcpJsonPath: '/tmp/project/.mcp.json'
+                },
+                null,
+                'default',
+                'sonnet'
+            )
+            engine.getOrCreateMachine(
+                'machine-1',
+                { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0', mcpProfiles: ['core', 'dev'] },
+                null,
+                'default'
+            )
+            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            engine.handleSessionAlive({ sid: session.id, time: Date.now(), thinking: false })
+
+            ;(engine as any).rpcGateway.switchMcpProfile = async () => ({ ok: true, currentMcpProfile: 'core' })
+            ;(engine as any).abortSession = async () => {
+                engine.handleSessionEnd({ sid: session.id, time: Date.now() })
+            }
+            ;(engine as any).resumeSession = async () => ({ type: 'success', sessionId: session.id })
+
+            const result = await engine.reloadMcpProfile(session.id, 'default', 'core')
+
+            expect(result).toEqual({
+                type: 'success',
+                sessionId: session.id,
+                currentMcpProfile: 'core'
+            })
+            expect(engine.getSession(session.id)?.metadata?.currentMcpProfile).toBe('core')
+            expect(events.filter((event) => event.type === 'mcp-reload-progress').map((event) => event.type === 'mcp-reload-progress' ? event.step : null)).toEqual([
+                'rpc-sent',
+                'rpc-acked',
+                'aborting',
+                'inactive',
+                'resuming',
+                'active'
+            ])
+        } finally {
+            unsubscribe()
+            engine.stop()
+        }
+    })
+
+    it('rejects concurrent MCP reloads for the same session', async () => {
+        const store = new Store(':memory:')
+        const engine = new SyncEngine(
+            store,
+            {} as never,
+            new RpcRegistry(),
+            { broadcast() {} } as never
+        )
+
+        try {
+            const session = engine.getOrCreateSession(
+                'session-claude-reload-lock',
+                {
+                    path: '/tmp/project',
+                    host: 'localhost',
+                    machineId: 'machine-1',
+                    flavor: 'claude',
+                    claudeSessionId: 'claude-thread-1',
+                    mcpJsonPath: '/tmp/project/.mcp.json'
+                },
+                null,
+                'default',
+                'sonnet'
+            )
+
+            ;(engine as any).reloadingSessions.add(session.id)
+
+            const result = await engine.reloadMcpProfile(session.id, 'default', 'core')
+
+            expect(result).toEqual({
+                type: 'error',
+                message: 'Reload already in progress',
+                code: 'locked'
+            })
+        } finally {
+            engine.stop()
+        }
+    })
+
     describe('session dedup by agent session ID', () => {
         it('merges duplicate when codexSessionId collides', async () => {
             const store = new Store(':memory:')
