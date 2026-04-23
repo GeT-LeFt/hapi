@@ -12,6 +12,12 @@ import { createAppRouter } from './router'
 import { I18nProvider } from './lib/i18n-context'
 import { restoreSpaRedirect } from './lib/spaRedirect'
 
+// When a new deployment changes chunk hashes, dynamic imports will fail.
+// Reload once automatically so the user gets the fresh index.html.
+window.addEventListener('vite:preloadError', () => {
+    window.location.reload()
+})
+
 function getStartParam(): string | null {
     const query = new URLSearchParams(window.location.search)
     const fromQuery = query.get('startapp') || query.get('tgWebAppStartParam')
