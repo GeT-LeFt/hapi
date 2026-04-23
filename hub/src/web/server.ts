@@ -47,10 +47,21 @@ function findWebappDistDir(): { distDir: string; indexHtmlPath: string } {
     return { distDir, indexHtmlPath: join(distDir, 'index.html') }
 }
 
-function serveEmbeddedAsset(asset: EmbeddedWebAsset): Response {
+function cacheControlFor(path: string): string {
+    if (path === '/index.html' || path === '/') {
+        return 'no-cache'
+    }
+    if (path.startsWith('/assets/')) {
+        return 'public, max-age=31536000, immutable'
+    }
+    return 'no-cache'
+}
+
+function serveEmbeddedAsset(asset: EmbeddedWebAsset, requestPath: string): Response {
     return new Response(Bun.file(asset.sourcePath), {
         headers: {
-            'Content-Type': asset.mimeType
+            'Content-Type': asset.mimeType,
+            'Cache-Control': cacheControlFor(requestPath)
         }
     })
 }
@@ -151,7 +162,7 @@ from GitHub Pages instead of through the relay tunnel.
 
             const asset = embeddedAssetMap.get(c.req.path)
             if (asset) {
-                return serveEmbeddedAsset(asset)
+                return serveEmbeddedAsset(asset, c.req.path)
             }
 
             return await next()
@@ -163,7 +174,7 @@ from GitHub Pages instead of through the relay tunnel.
                 return
             }
 
-            return serveEmbeddedAsset(indexHtmlAsset)
+            return serveEmbeddedAsset(indexHtmlAsset, '/index.html')
         })
 
         return app

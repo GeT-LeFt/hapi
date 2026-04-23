@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
     Navigate,
@@ -12,28 +13,20 @@ import {
     useParams,
 } from '@tanstack/react-router'
 import { App } from '@/App'
-import { SessionChat } from '@/components/SessionChat'
 import { SessionList } from '@/components/SessionList'
+import { SessionView } from '@/components/SessionView'
 import { NewSession } from '@/components/NewSession'
-import { LoadingState } from '@/components/LoadingState'
 import { useAppContext } from '@/lib/app-context'
 import { useAppGoBack } from '@/hooks/useAppGoBack'
 import { isTelegramApp } from '@/hooks/useTelegram'
 import { useSidebarResize } from '@/hooks/useSidebarResize'
-import { useMessages } from '@/hooks/queries/useMessages'
 import { useMachines } from '@/hooks/queries/useMachines'
-import { useSession } from '@/hooks/queries/useSession'
 import { useSessions } from '@/hooks/queries/useSessions'
-import { useSlashCommands } from '@/hooks/queries/useSlashCommands'
-import { useSkills } from '@/hooks/queries/useSkills'
-import { useSendMessage } from '@/hooks/mutations/useSendMessage'
 import { queryKeys } from '@/lib/query-keys'
-import { useToast } from '@/lib/toast-context'
 import { useUnread } from '@/lib/unread-context'
 import { useNotification } from '@/lib/notification-context'
 import { useTranslation } from '@/lib/use-translation'
-import { fetchLatestMessages, seedMessageWindowFromSession } from '@/lib/message-window-store'
-import { clearDraftsAfterSend } from '@/lib/clearDraftsAfterSend'
+import { startViewNav } from '@/lib/startViewNav'
 import type { Machine } from '@/types/api'
 import FilesPage from '@/routes/sessions/files'
 import FilePage from '@/routes/sessions/file'
@@ -130,30 +123,11 @@ function SessionsPage() {
     }, [machines])
     const sessionMatch = matchRoute({ to: '/sessions/$sessionId', fuzzy: true })
     const selectedSessionId = sessionMatch && sessionMatch.sessionId !== 'new' ? sessionMatch.sessionId : null
+    const [lastViewedSessionId, setLastViewedSessionId] = useState<string | null>(selectedSessionId)
     const isSessionsIndex = pathname === '/sessions' || pathname === '/sessions/'
     const sidebar = useSidebarResize()
     const { markRead } = useUnread()
     const { removeBySession } = useNotification()
-
-    // Defer mounting the heavy right panel on mobile until the slide-in
-    // animation has had time to start. Mounting the chat + message list
-    // synchronously on click saturates the main thread and eats the transition.
-    const [rightReady, setRightReady] = useState(true)
-    useEffect(() => {
-        if (isSessionsIndex) {
-            setRightReady(true)
-            return
-        }
-        if (typeof window === 'undefined') return
-        const isMobile = window.matchMedia('(max-width: 1023.98px)').matches
-        if (!isMobile) {
-            setRightReady(true)
-            return
-        }
-        setRightReady(false)
-        const id = window.setTimeout(() => setRightReady(true), 360)
-        return () => window.clearTimeout(id)
-    }, [isSessionsIndex])
 
     useEffect(() => {
         if (selectedSessionId) {
@@ -161,6 +135,12 @@ function SessionsPage() {
             removeBySession(selectedSessionId)
         }
     }, [selectedSessionId, markRead, removeBySession])
+
+    useEffect(() => {
+        if (selectedSessionId) {
+            setLastViewedSessionId(selectedSessionId)
+        }
+    }, [selectedSessionId])
 
     return (
         <div className="mobile-slide-container flex h-full min-h-0 w-full">
@@ -204,10 +184,17 @@ function SessionsPage() {
                     <SessionList
                         sessions={sessions}
                         selectedSessionId={selectedSessionId}
-                        onSelect={(sessionId) => navigate({
-                            to: '/sessions/$sessionId',
-                            params: { sessionId },
-                        })}
+                        onSelect={(sessionId) => {
+                            flushSync(() => {
+                                setLastViewedSessionId(sessionId)
+                            })
+                            const vp = document.querySelector('.mobile-slide-panel-right .app-scroll-y')
+                            if (vp) vp.scrollTop = vp.scrollHeight
+                            startViewNav('forward', () => navigate({
+                                to: '/sessions/$sessionId',
+                                params: { sessionId },
+                            }))
+                        }}
                         onNewSession={() => navigate({ to: '/sessions/new' })}
                         onRefresh={handleRefresh}
                         isLoading={isLoading}
@@ -230,7 +217,11 @@ function SessionsPage() {
                 className="mobile-slide-panel mobile-slide-panel-right flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]"
             >
                 <div className="flex-1 min-h-0">
-                    {rightReady ? <Outlet /> : null}
+                    {isSessionsIndex && lastViewedSessionId ? (
+                        <SessionView sessionId={lastViewedSessionId} />
+                    ) : (
+                        <Outlet />
+                    )}
                 </div>
             </div>
         </div>
@@ -242,195 +233,8 @@ function SessionsIndexPage() {
 }
 
 function SessionPage() {
-    const { api } = useAppContext()
-    const { t } = useTranslation()
-    const goBack = useAppGoBack()
-    const navigate = useNavigate()
-    const queryClient = useQueryClient()
-    const { addToast } = useToast()
     const { sessionId } = useParams({ from: '/sessions/$sessionId' })
-    const {
-        session,
-        refetch: refetchSession,
-    } = useSession(api, sessionId)
-    const { machines } = useMachines(api, true)
-    const {
-        messages,
-        warning: messagesWarning,
-        isLoading: messagesLoading,
-        isLoadingMore: messagesLoadingMore,
-        hasMore: messagesHasMore,
-        loadMore: loadMoreMessages,
-        refetch: refetchMessages,
-        pendingCount,
-        messagesVersion,
-        flushPending,
-        setAtBottom,
-    } = useMessages(api, sessionId)
-    const {
-        sendMessage,
-        retryMessage,
-        isSending,
-    } = useSendMessage(api, sessionId, {
-        isSessionThinking: session?.thinking ?? false,
-        onSuccess: (sentSessionId) => {
-            clearDraftsAfterSend(sentSessionId, sessionId)
-        },
-        resolveSessionId: async (currentSessionId) => {
-            if (!api || !session || session.active) {
-                return currentSessionId
-            }
-            try {
-                return await api.resumeSession(currentSessionId)
-            } catch (error) {
-                const message = error instanceof Error ? error.message : 'Resume failed'
-                addToast({
-                    title: 'Resume failed',
-                    body: message,
-                    sessionId: currentSessionId,
-                    url: ''
-                })
-                throw error
-            }
-        },
-        onSessionResolved: (resolvedSessionId) => {
-            void (async () => {
-                if (api) {
-                    if (session && resolvedSessionId !== session.id) {
-                        seedMessageWindowFromSession(session.id, resolvedSessionId)
-                        queryClient.setQueryData(queryKeys.session(resolvedSessionId), {
-                            session: { ...session, id: resolvedSessionId, active: true }
-                        })
-                    }
-                    try {
-                        await Promise.all([
-                            queryClient.prefetchQuery({
-                                queryKey: queryKeys.session(resolvedSessionId),
-                                queryFn: () => api.getSession(resolvedSessionId),
-                            }),
-                            fetchLatestMessages(api, resolvedSessionId),
-                        ])
-                    } catch {
-                    }
-                }
-                navigate({
-                    to: '/sessions/$sessionId',
-                    params: { sessionId: resolvedSessionId },
-                    replace: true
-                })
-            })()
-        },
-        onBlocked: (reason) => {
-            if (reason === 'no-api') {
-                addToast({
-                    title: t('send.blocked.title'),
-                    body: t('send.blocked.noConnection'),
-                    sessionId: sessionId ?? '',
-                    url: ''
-                })
-            }
-            // 'no-session' and 'pending' don't need toast - either invalid state or expected behavior
-        }
-    })
-
-    // Get agent type from session metadata for slash commands
-    const agentType = session?.metadata?.flavor ?? 'claude'
-    const {
-        commands: slashCommands,
-        getSuggestions: getSlashSuggestions,
-    } = useSlashCommands(api, sessionId, agentType)
-    const {
-        getSuggestions: getSkillSuggestions,
-    } = useSkills(api, sessionId)
-
-    const getAutocompleteSuggestions = useCallback(async (query: string) => {
-        if (query.startsWith('$')) {
-            return await getSkillSuggestions(query)
-        }
-        return await getSlashSuggestions(query)
-    }, [getSkillSuggestions, getSlashSuggestions])
-
-    const refreshSelectedSession = useCallback(() => {
-        void refetchSession()
-        void refetchMessages()
-    }, [refetchMessages, refetchSession])
-
-    const currentMachine = useMemo(() => {
-        const metadata = session?.metadata
-        if (metadata?.machineId) {
-            const exact = machines.find((machine) => machine.id === metadata.machineId)
-            if (exact) {
-                return exact
-            }
-        }
-        if (metadata?.host) {
-            return machines.find((machine) => machine.metadata?.host === metadata.host) ?? null
-        }
-        return null
-    }, [machines, session?.metadata?.host, session?.metadata?.machineId])
-
-    const handleSessionReloaded = useCallback((resolvedSessionId: string) => {
-        void (async () => {
-            if (api) {
-                if (session && resolvedSessionId !== session.id) {
-                    seedMessageWindowFromSession(session.id, resolvedSessionId)
-                    queryClient.setQueryData(queryKeys.session(resolvedSessionId), {
-                        session: { ...session, id: resolvedSessionId }
-                    })
-                }
-                try {
-                    await Promise.all([
-                        queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-                        queryClient.prefetchQuery({
-                            queryKey: queryKeys.session(resolvedSessionId),
-                            queryFn: () => api.getSession(resolvedSessionId),
-                        }),
-                        fetchLatestMessages(api, resolvedSessionId),
-                    ])
-                } catch {
-                }
-            }
-            navigate({
-                to: '/sessions/$sessionId',
-                params: { sessionId: resolvedSessionId },
-                replace: true
-            })
-        })()
-    }, [api, navigate, queryClient, session])
-
-    if (!session) {
-        return (
-            <div className="flex-1 flex items-center justify-center p-4">
-                <LoadingState label="Loading session…" className="text-sm" />
-            </div>
-        )
-    }
-
-    return (
-        <SessionChat
-            api={api}
-            session={session}
-            machine={currentMachine}
-            messages={messages}
-            messagesWarning={messagesWarning}
-            hasMoreMessages={messagesHasMore}
-            isLoadingMessages={messagesLoading}
-            isLoadingMoreMessages={messagesLoadingMore}
-            isSending={isSending}
-            pendingCount={pendingCount}
-            messagesVersion={messagesVersion}
-            onBack={goBack}
-            onRefresh={refreshSelectedSession}
-            onSessionReloaded={handleSessionReloaded}
-            onLoadMore={loadMoreMessages}
-            onSend={sendMessage}
-            onFlushPending={flushPending}
-            onAtBottomChange={setAtBottom}
-            onRetryMessage={retryMessage}
-            autocompleteSuggestions={getAutocompleteSuggestions}
-            availableSlashCommands={slashCommands}
-        />
-    )
+    return <SessionView sessionId={sessionId} />
 }
 
 function SessionDetailRoute() {

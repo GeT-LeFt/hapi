@@ -184,12 +184,10 @@ export function HappyThread(props: {
         return () => {
             const viewport = viewportRef.current
             if (viewport) {
-                const entry = {
+                scrollCache.set(props.sessionId, {
                     scrollTop: viewport.scrollTop,
                     atBottom: atBottomRef.current
-                }
-                scrollCache.set(props.sessionId, entry)
-                console.log('[SCROLL] save', props.sessionId.slice(0, 8), entry)
+                })
                 if (scrollCache.size > SCROLL_CACHE_MAX) {
                     const oldest = scrollCache.keys().next().value
                     if (oldest) scrollCache.delete(oldest)
@@ -207,7 +205,6 @@ export function HappyThread(props: {
         onFlushPendingRef.current()
         forceScrollTokenRef.current = props.forceScrollToken
         const cached = scrollCache.get(props.sessionId)
-        console.log('[SCROLL] session-change', props.sessionId.slice(0, 8), 'cached=', cached)
         if (cached && !cached.atBottom) {
             pendingRestoreRef.current = { scrollTop: cached.scrollTop }
             atBottomRef.current = false
@@ -228,7 +225,7 @@ export function HappyThread(props: {
     }, [props.forceScrollToken, scrollToBottom])
 
     const handleLoadMore = useCallback(() => {
-        if (isLoadingMessagesRef.current || !hasMoreMessagesRef.current || isLoadingMoreRef.current || loadLockRef.current) {
+        if (isLoadingMessagesRef.current || !hasMoreMessagesRef.current || isLoadingMoreRef.current || loadLockRef.current || settlingRef.current) {
             return
         }
         const viewport = viewportRef.current
@@ -300,16 +297,17 @@ export function HappyThread(props: {
         }
         const pending = pendingScrollRef.current
         if (pending) {
+            if (settlingRef.current) {
+                pendingScrollRef.current = null
+                loadLockRef.current = false
+                return
+            }
             const delta = viewport.scrollHeight - pending.scrollHeight
             viewport.scrollTop = pending.scrollTop + delta
             pendingScrollRef.current = null
             loadLockRef.current = false
             return
         }
-        // Restore cached scroll position on session revisit.
-        // ThreadPrimitive.Messages hydrates one render after messagesVersion changes,
-        // so children may not yet be in the DOM when this effect fires. Fall back to
-        // a MutationObserver + rAF loop to catch the first real content commit.
         const restore = pendingRestoreRef.current
         if (restore) {
             const messagesEl = viewport.querySelector('.happy-thread-messages')
@@ -318,17 +316,34 @@ export function HappyThread(props: {
                 const vp = viewportRef.current
                 const el = vp?.querySelector('.happy-thread-messages')
                 if (!vp || !el || el.children.length === 0) return false
-                vp.scrollTop = pendingRestoreRef.current.scrollTop
-                console.log('[SCROLL] restored to', pendingRestoreRef.current.scrollTop)
+                const target = pendingRestoreRef.current.scrollTop
+                vp.scrollTop = target
                 pendingRestoreRef.current = null
-                settlingRef.current = false
+                // scrollHeight may still be growing (partial render), so scrollTop
+                // gets clamped below target. Retry each frame until it sticks.
+                const retryRestore = (attempt: number) => {
+                    if (attempt > 10) {
+                        settlingRef.current = false
+                        return
+                    }
+                    requestAnimationFrame(() => {
+                        if (vp.scrollTop !== target && vp.scrollHeight > target) {
+                            vp.scrollTop = target
+                        }
+                        if (vp.scrollTop === target || attempt >= 5) {
+                            settlingRef.current = false
+                        } else {
+                            retryRestore(attempt + 1)
+                        }
+                    })
+                }
+                retryRestore(0)
                 return true
             }
             if (messagesEl && messagesEl.children.length > 0) {
                 applyRestore()
                 return
             }
-            // Defer: observe until children appear, then restore
             const host = messagesEl ?? viewport
             const observer = new MutationObserver(() => {
                 if (applyRestore()) observer.disconnect()
@@ -337,8 +352,6 @@ export function HappyThread(props: {
             setTimeout(() => observer.disconnect(), 5000)
             return
         }
-        // Stay pinned to bottom only when the user is already at bottom.
-        // Replaces the library's resize-triggered scrollToBottom which ignored user intent.
         if (atBottomRef.current) {
             viewport.scrollTop = viewport.scrollHeight
         }
