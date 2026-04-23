@@ -745,7 +745,9 @@ export async function startRunner(): Promise<void> {
         try {
           spawnHappyCLI(['runner', 'start'], {
             detached: true,
-            stdio: 'ignore'
+            stdio: 'ignore',
+            env: process.env,
+            cwd: process.env.HOME || os.homedir()
           });
         } catch (error) {
           logger.debug('[RUNNER RUN] Failed to spawn new runner, this is quite likely to happen during integration tests as we are cleaning out dist/ directory', error);
