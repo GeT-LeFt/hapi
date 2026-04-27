@@ -7,7 +7,7 @@
  * - No E2E encryption; data is stored as JSON in SQLite
  */
 
-import type { CodexCollaborationMode, DecryptedMessage, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
+import type { CodexCollaborationMode, DecryptedMessage, LocalSession, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { RpcRegistry } from '../socket/rpcRegistry'
@@ -27,6 +27,7 @@ import {
     type RpcWriteProjectFileResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { LocalSessionCache } from './localSessionCache'
 
 export type { Session, SyncEvent } from '@hapi/protocol/types'
 export type { Machine } from './machineCache'
@@ -82,6 +83,7 @@ export class SyncEngine {
     private readonly machineCache: MachineCache
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
+    private readonly localSessionCache: LocalSessionCache
     private inactivityTimer: NodeJS.Timeout | null = null
     private readonly reloadingSessions: Set<string> = new Set()
 
@@ -96,6 +98,7 @@ export class SyncEngine {
         this.machineCache = new MachineCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
+        this.localSessionCache = new LocalSessionCache()
 
         this.sessionCache.setOnSessionDeleted((sessionId, machineId) => {
             if (machineId) {
@@ -784,5 +787,82 @@ export class SyncEngine {
         error?: string
     }> {
         return await this.rpcGateway.listSkills(sessionId)
+    }
+
+    // --- Local session discovery ---
+
+    async scanLocalSessions(machineId: string, namespace: string): Promise<LocalSession[]> {
+        const machine = this.machineCache.getMachineByNamespace(machineId, namespace)
+        if (!machine) {
+            throw new Error('machine_not_found')
+        }
+
+        const sessions = await this.rpcGateway.scanLocalSessions(machineId)
+
+        const existingSessions = this.sessionCache.getSessionsByNamespace(namespace)
+        const importedAgentIds = new Set<string>()
+        for (const s of existingSessions) {
+            const agentId = s.metadata?.claudeSessionId
+                ?? s.metadata?.codexSessionId
+                ?? s.metadata?.geminiSessionId
+                ?? s.metadata?.opencodeSessionId
+                ?? s.metadata?.cursorSessionId
+            if (agentId) importedAgentIds.add(agentId)
+        }
+
+        const enriched = sessions.map(s => ({
+            ...s,
+            isImported: importedAgentIds.has(s.sessionId)
+        }))
+
+        this.localSessionCache.updateSessions(machineId, enriched)
+        return enriched
+    }
+
+    getLocalSessions(machineId?: string): LocalSession[] {
+        if (machineId) return this.localSessionCache.getSessions(machineId)
+        return this.localSessionCache.getAllSessions()
+    }
+
+    async resumeLocalSession(
+        machineId: string,
+        sessionId: string,
+        projectPath: string,
+        namespace: string
+    ): Promise<ResumeSessionResult> {
+        const machine = this.machineCache.getMachineByNamespace(machineId, namespace)
+        if (!machine) {
+            return { type: 'error', message: 'Machine not accessible', code: 'no_machine_online' }
+        }
+
+        const spawnResult = await this.rpcGateway.spawnSession(
+            machineId,
+            projectPath,
+            'claude',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            sessionId
+        )
+
+        if (spawnResult.type === 'error') {
+            return { type: 'error', message: spawnResult.message, code: 'resume_failed' }
+        }
+
+        const newSessionId = spawnResult.sessionId
+        const becameActive = await this.waitForSessionActive(newSessionId, 15_000)
+        if (!becameActive) {
+            return { type: 'error', message: 'Resume timeout', code: 'resume_timeout' }
+        }
+
+        this.localSessionCache.updateSessions(machineId,
+            this.localSessionCache.getSessions(machineId).map(s =>
+                s.sessionId === sessionId ? { ...s, isImported: true } : s
+            )
+        )
+
+        return { type: 'success', sessionId: newSessionId }
     }
 }

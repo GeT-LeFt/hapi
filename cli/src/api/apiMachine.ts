@@ -6,6 +6,7 @@ import { io, type Socket } from 'socket.io-client'
 import { stat } from 'node:fs/promises'
 import { cleanupBlobDirBySessionId } from '../modules/common/handlers/uploads'
 import { runBlobGC } from '../modules/common/handlers/blobGc'
+import { discoverLocalSessions } from '../claude/utils/localSessionDiscovery'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
 import type { Update, UpdateMachineBody } from '@hapi/protocol'
@@ -124,6 +125,11 @@ export class ApiMachineClient {
             }
 
             return switchProfile(mcpJsonPath, profile)
+        })
+
+        this.rpcHandlerManager.registerHandler<Record<string, never>, { sessions: import('@hapi/protocol/types').LocalSession[] }>('scan-local-sessions', async () => {
+            const sessions = await discoverLocalSessions()
+            return { sessions }
         })
 
         void runBlobGC()

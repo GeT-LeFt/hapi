@@ -41,6 +41,13 @@ export default {
   // Sessions page
   'sessions.count': '{n} 个会话，{m} 个项目',
   'sessions.new': '新建会话',
+  'sessions.syncLocal': '同步本地会话',
+  'sessions.syncing': '同步中...',
+  'sessions.localHistory': '本地历史 (Claude Code)',
+  'sessions.localSession.resume': '恢复此会话？',
+  'sessions.localSession.resumeDesc': '这将在目标机器上启动 Claude Code 以恢复此会话。',
+  'sessions.localSession.imported': '已导入',
+  'sessions.localSession.resuming': '恢复中...',
 
   // Session list
   'session.item.path': '路径',

@@ -337,6 +337,49 @@ function MachineIcon(props: { className?: string }) {
     )
 }
 
+function RefreshIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+            <path d="M16 16h5v5" />
+        </svg>
+    )
+}
+
+function HistoryIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+            <path d="M12 7v5l4 2" />
+        </svg>
+    )
+}
+
 function formatRelativeTime(value: number, t: (key: string, params?: Record<string, string | number>) => string): string | null {
     const ms = value < 1_000_000_000_000 ? value * 1000 : value
     if (!Number.isFinite(ms)) return null
@@ -498,6 +541,10 @@ export function SessionList(props: {
     api: ApiClient | null
     machineLabelsById?: Record<string, string>
     selectedSessionId?: string | null
+    localSessions?: import('@hapi/protocol/types').LocalSession[]
+    onResumeLocalSession?: (sessionId: string, projectPath: string) => Promise<void>
+    onScanLocal?: () => void
+    isScanLoading?: boolean
 }) {
     const { t } = useTranslation()
     const { renderHeader = true, api, selectedSessionId, machineLabelsById = {} } = props
@@ -692,14 +739,25 @@ export function SessionList(props: {
                     <div className="text-xs text-[var(--app-hint)]">
                         {t('sessions.count', { n: props.sessions.length, m: groups.length })}
                     </div>
-                    <button
-                        type="button"
-                        onClick={props.onNewSession}
-                        className="session-list-new-button p-1.5 rounded-full text-[var(--app-link)] transition-colors"
-                        title={t('sessions.new')}
-                    >
-                        <PlusIcon className="h-5 w-5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={props.onScanLocal}
+                            disabled={props.isScanLoading}
+                            className="p-1.5 rounded-full text-[var(--app-hint)] hover:text-[var(--app-link)] transition-colors disabled:opacity-50"
+                            title={props.isScanLoading ? t('sessions.syncing') : t('sessions.syncLocal')}
+                        >
+                            <RefreshIcon className={`h-4 w-4 ${props.isScanLoading ? 'animate-spin' : ''}`} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={props.onNewSession}
+                            className="session-list-new-button p-1.5 rounded-full text-[var(--app-link)] transition-colors"
+                            title={t('sessions.new')}
+                        >
+                            <PlusIcon className="h-5 w-5" />
+                        </button>
+                    </div>
                 </div>
             ) : null}
 
@@ -820,6 +878,15 @@ export function SessionList(props: {
                 })}
             </div>
 
+            {/* Local history sessions */}
+            {props.localSessions && props.localSessions.length > 0 ? (
+                <LocalHistorySection
+                    sessions={props.localSessions}
+                    onResume={props.onResumeLocalSession}
+                    t={t}
+                />
+            ) : null}
+
             {/* Project group context menu */}
             {bulkMenuAnchor ? (
                 <ProjectGroupContextMenu
@@ -916,4 +983,102 @@ function ProjectGroupContextMenu(props: {
             </button>
         </div>
     )
+}
+
+type LocalSession = import('@hapi/protocol/types').LocalSession
+
+function LocalHistorySection(props: {
+    sessions: LocalSession[]
+    onResume?: (sessionId: string, projectPath: string) => Promise<void>
+    t: (key: string, params?: Record<string, string | number>) => string
+}) {
+    const [collapsed, setCollapsed] = useState(true)
+    const [resumeTarget, setResumeTarget] = useState<LocalSession | null>(null)
+    const [isResuming, setIsResuming] = useState(false)
+
+    const unimported = props.sessions.filter(s => !s.isImported)
+    if (unimported.length === 0) return null
+
+    const grouped = new Map<string, LocalSession[]>()
+    for (const s of unimported) {
+        const key = s.projectPath || s.projectId
+        if (!grouped.has(key)) grouped.set(key, [])
+        grouped.get(key)!.push(s)
+    }
+
+    return (
+        <>
+            <div className="px-2 pt-3">
+                <button
+                    type="button"
+                    onClick={() => setCollapsed(!collapsed)}
+                    className="flex w-full items-center gap-2 px-1 py-1.5 text-left rounded-lg transition-colors hover:bg-[var(--app-subtle-bg)] select-none"
+                >
+                    <ChevronIcon className="h-4 w-4 text-[var(--app-hint)] shrink-0" collapsed={collapsed} />
+                    <span className="text-xs font-semibold text-[var(--app-hint)] uppercase tracking-wide flex-1">
+                        {props.t('sessions.localHistory')}
+                    </span>
+                    <span className="text-[11px] tabular-nums text-[var(--app-hint)] shrink-0">({unimported.length})</span>
+                </button>
+
+                <div className="collapsible-panel" data-open={!collapsed || undefined}>
+                    <div className="collapsible-inner">
+                        <div className="flex flex-col gap-0.5 ml-3 pl-1 pr-1 py-1">
+                            {Array.from(grouped.entries()).map(([path, sessions]) => (
+                                <div key={path}>
+                                    <div className="text-xs font-medium text-[var(--app-hint)] px-2.5 py-1 truncate" title={path}>
+                                        {getGroupDisplayName(path)}
+                                    </div>
+                                    {sessions.map(s => (
+                                        <button
+                                            key={s.sessionId}
+                                            type="button"
+                                            onClick={() => setResumeTarget(s)}
+                                            className="flex w-full flex-col gap-1 px-2.5 py-2 text-left rounded-lg transition-colors hover:bg-[var(--app-subtle-bg)] opacity-60"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span className="inline-flex items-center justify-center rounded-sm text-[8px] font-semibold leading-none bg-gray-400 text-white h-4 w-4">Lc</span>
+                                                    <span className="truncate text-sm font-medium text-[var(--app-hint)]">
+                                                        {s.preview || s.sessionId.slice(0, 8)}
+                                                    </span>
+                                                </div>
+                                                <span className="text-xs text-[var(--app-hint)] shrink-0">
+                                                    {formatLocalSessionTime(s.lastModified, props.t)}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <ConfirmDialog
+                isOpen={!!resumeTarget}
+                onClose={() => setResumeTarget(null)}
+                title={props.t('sessions.localSession.resume')}
+                description={props.t('sessions.localSession.resumeDesc')}
+                confirmLabel={isResuming ? props.t('sessions.localSession.resuming') : props.t('button.confirm')}
+                confirmingLabel={props.t('sessions.localSession.resuming')}
+                isPending={isResuming}
+                onConfirm={async () => {
+                    if (!resumeTarget || !props.onResume) return
+                    setIsResuming(true)
+                    try {
+                        await props.onResume(resumeTarget.sessionId, resumeTarget.projectPath)
+                    } finally {
+                        setIsResuming(false)
+                        setResumeTarget(null)
+                    }
+                }}
+            />
+        </>
+    )
+}
+
+function formatLocalSessionTime(ms: number, t: (key: string, params?: Record<string, string | number>) => string): string {
+    return formatRelativeTime(ms, t) ?? new Date(ms).toLocaleDateString()
 }

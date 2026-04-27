@@ -506,4 +506,23 @@ export class ApiClient {
             body: JSON.stringify(options || {})
         })
     }
+
+    async getLocalSessions(machineId?: string): Promise<{ sessions: Array<{ sessionId: string; projectPath: string; projectId: string; lastModified: number; fileSize: number; preview?: string; isImported?: boolean }> }> {
+        const query = machineId ? `?machineId=${encodeURIComponent(machineId)}` : ''
+        return await this.request(`/api/local-sessions${query}`)
+    }
+
+    async scanLocalSessions(machineId: string): Promise<{ sessions: Array<{ sessionId: string; projectPath: string; projectId: string; lastModified: number; fileSize: number; preview?: string; isImported?: boolean }> }> {
+        return await this.request('/api/local-sessions/scan', {
+            method: 'POST',
+            body: JSON.stringify({ machineId })
+        })
+    }
+
+    async resumeLocalSession(machineId: string, sessionId: string, projectPath: string): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string; code: string }> {
+        return await this.request('/api/local-sessions/resume', {
+            method: 'POST',
+            body: JSON.stringify({ machineId, sessionId, projectPath })
+        })
+    }
 }

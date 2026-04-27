@@ -1,4 +1,4 @@
-import type { CodexCollaborationMode, PermissionMode } from '@hapi/protocol/types'
+import type { CodexCollaborationMode, PermissionMode, LocalSession } from '@hapi/protocol/types'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -286,6 +286,14 @@ export class RpcGateway {
         } catch {
             // CLI offline — orphan GC will handle it
         }
+    }
+
+    async scanLocalSessions(machineId: string): Promise<LocalSession[]> {
+        const result = await this.machineRpc(machineId, 'scan-local-sessions', {}) as { sessions?: unknown }
+        if (!result || typeof result !== 'object' || !Array.isArray(result.sessions)) {
+            throw new Error('Unexpected scan-local-sessions result')
+        }
+        return result.sessions as LocalSession[]
     }
 
     private async sessionRpc(sessionId: string, method: string, params: unknown, timeoutMs?: number): Promise<unknown> {

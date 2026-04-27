@@ -41,6 +41,13 @@ export default {
   // Sessions page
   'sessions.count': '{n} sessions in {m} projects',
   'sessions.new': 'New Session',
+  'sessions.syncLocal': 'Sync local sessions',
+  'sessions.syncing': 'Syncing...',
+  'sessions.localHistory': 'Local History (Claude Code)',
+  'sessions.localSession.resume': 'Resume this session?',
+  'sessions.localSession.resumeDesc': 'This will start Claude Code on the target machine to resume this session.',
+  'sessions.localSession.imported': 'Imported',
+  'sessions.localSession.resuming': 'Resuming...',
 
   // Session list
   'session.item.path': 'path',
