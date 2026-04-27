@@ -84,6 +84,7 @@ export class SyncEngine {
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
     private readonly localSessionCache: LocalSessionCache
+    private readonly store: Store
     private inactivityTimer: NodeJS.Timeout | null = null
     private readonly reloadingSessions: Set<string> = new Set()
 
@@ -93,6 +94,7 @@ export class SyncEngine {
         rpcRegistry: RpcRegistry,
         sseManager: SSEManager
     ) {
+        this.store = store
         this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.machineCache = new MachineCache(store, this.eventPublisher)
@@ -835,6 +837,18 @@ export class SyncEngine {
             return { type: 'error', message: 'Machine not accessible', code: 'no_machine_online' }
         }
 
+        const localSession = this.localSessionCache.getSessions(machineId).find(s => s.sessionId === sessionId)
+        const projectId = localSession?.projectId
+
+        let historicalMessages: Array<{ role: string, content: unknown, timestamp: number }> = []
+        if (projectId) {
+            try {
+                historicalMessages = await this.rpcGateway.readSessionMessages(machineId, projectId, sessionId)
+            } catch {
+                // read failure doesn't block resume
+            }
+        }
+
         const spawnResult = await this.rpcGateway.spawnSession(
             machineId,
             projectPath,
@@ -855,6 +869,16 @@ export class SyncEngine {
         const becameActive = await this.waitForSessionActive(newSessionId, 15_000)
         if (!becameActive) {
             return { type: 'error', message: 'Resume timeout', code: 'resume_timeout' }
+        }
+
+        if (historicalMessages.length > 0) {
+            try {
+                this.store.messages.importMessages(newSessionId,
+                    historicalMessages.map(m => ({ content: m.content, createdAt: m.timestamp }))
+                )
+            } catch {
+                // import failure doesn't block resume
+            }
         }
 
         this.localSessionCache.updateSessions(machineId,

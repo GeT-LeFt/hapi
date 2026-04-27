@@ -71,6 +71,34 @@ export function addMessage(
     return toStoredMessage(row)
 }
 
+export function importMessages(
+    db: Database,
+    sessionId: string,
+    messages: Array<{ content: unknown, createdAt: number }>
+): number {
+    const insert = db.prepare(`
+        INSERT INTO messages (id, session_id, content, created_at, seq, local_id)
+        VALUES (@id, @session_id, @content, @created_at, @seq, NULL)
+    `)
+
+    const run = db.transaction(() => {
+        let seq = 0
+        for (const msg of messages) {
+            seq++
+            insert.run({
+                id: randomUUID(),
+                session_id: sessionId,
+                content: JSON.stringify(msg.content),
+                created_at: msg.createdAt,
+                seq
+            })
+        }
+        return seq
+    })
+
+    return run()
+}
+
 export function getMessages(
     db: Database,
     sessionId: string,

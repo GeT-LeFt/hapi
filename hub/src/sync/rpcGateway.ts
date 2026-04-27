@@ -296,6 +296,14 @@ export class RpcGateway {
         return result.sessions as LocalSession[]
     }
 
+    async readSessionMessages(machineId: string, projectId: string, sessionId: string): Promise<Array<{ role: string, content: unknown, timestamp: number }>> {
+        const result = await this.machineRpc(machineId, 'read-session-messages', { projectId, sessionId }) as { messages?: unknown }
+        if (!result || typeof result !== 'object' || !Array.isArray(result.messages)) {
+            return []
+        }
+        return result.messages as Array<{ role: string, content: unknown, timestamp: number }>
+    }
+
     private async sessionRpc(sessionId: string, method: string, params: unknown, timeoutMs?: number): Promise<unknown> {
         return await this.rpcCall(`${sessionId}:${method}`, params, timeoutMs)
     }

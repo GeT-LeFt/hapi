@@ -7,6 +7,7 @@ import { stat } from 'node:fs/promises'
 import { cleanupBlobDirBySessionId } from '../modules/common/handlers/uploads'
 import { runBlobGC } from '../modules/common/handlers/blobGc'
 import { discoverLocalSessions } from '../claude/utils/localSessionDiscovery'
+import { readSessionMessages } from '../claude/utils/sessionMessageReader'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
 import type { Update, UpdateMachineBody } from '@hapi/protocol'
@@ -130,6 +131,11 @@ export class ApiMachineClient {
         this.rpcHandlerManager.registerHandler<Record<string, never>, { sessions: import('@hapi/protocol/types').LocalSession[] }>('scan-local-sessions', async () => {
             const sessions = await discoverLocalSessions()
             return { sessions }
+        })
+
+        this.rpcHandlerManager.registerHandler<{ projectId: string, sessionId: string }, { messages: import('../claude/utils/sessionMessageReader').SessionMessage[] }>('read-session-messages', async (params) => {
+            const messages = await readSessionMessages(params.projectId, params.sessionId)
+            return { messages }
         })
 
         void runBlobGC()
