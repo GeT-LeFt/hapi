@@ -889,4 +889,26 @@ export class SyncEngine {
 
         return { type: 'success', sessionId: newSessionId }
     }
+
+    async deleteLocalSessions(
+        machineId: string,
+        projectId: string,
+        sessionIds: string[],
+        namespace: string
+    ): Promise<{ deleted: string[]; failed: Array<{ sessionId: string; error: string }> }> {
+        const machine = this.machineCache.getMachineByNamespace(machineId, namespace)
+        if (!machine) {
+            throw new Error('machine_not_found')
+        }
+
+        const result = await this.rpcGateway.deleteLocalSessions(machineId, projectId, sessionIds)
+
+        if (result.deleted.length > 0) {
+            const deletedSet = new Set(result.deleted)
+            const current = this.localSessionCache.getSessions(machineId)
+            this.localSessionCache.updateSessions(machineId, current.filter(s => !deletedSet.has(s.sessionId)))
+        }
+
+        return result
+    }
 }

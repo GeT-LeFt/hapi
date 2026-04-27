@@ -48,6 +48,12 @@ export default {
   'sessions.localSession.resumeDesc': 'This will start Claude Code on the target machine to resume this session.',
   'sessions.localSession.imported': 'Imported',
   'sessions.localSession.resuming': 'Resuming...',
+  'sessions.localSession.selectAll': 'Select all',
+  'sessions.localSession.deleteSelected': 'Delete ({n})',
+  'sessions.localSession.deleting': 'Deleting...',
+  'sessions.localSession.deleteTitle': 'Delete local sessions?',
+  'sessions.localSession.deleteDesc': 'This will permanently delete {n} session file(s) from disk. This cannot be undone.',
+  'sessions.localSession.deleteConfirm': 'Delete',
 
   // Session list
   'session.item.path': 'path',

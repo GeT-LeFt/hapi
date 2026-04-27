@@ -14,6 +14,12 @@ const resumeSchema = z.object({
     projectPath: z.string().min(1)
 })
 
+const deleteSchema = z.object({
+    machineId: z.string().min(1),
+    projectId: z.string().min(1),
+    sessionIds: z.array(z.string().min(1)).min(1)
+})
+
 export function createLocalSessionsRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -79,6 +85,30 @@ export function createLocalSessionsRoutes(getSyncEngine: () => SyncEngine | null
             { type: 'error', message: result.message, code: result.code },
             status
         )
+    })
+
+    app.post('/local-sessions/delete', async (c) => {
+        const engineOrRes = requireSyncEngine(c, getSyncEngine)
+        if (engineOrRes instanceof Response) return engineOrRes
+        const engine = engineOrRes
+
+        const parsed = deleteSchema.safeParse(await c.req.json())
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid request body' }, 400)
+        }
+
+        const namespace = c.get('namespace')
+        const { machineId, projectId, sessionIds } = parsed.data
+
+        try {
+            const result = await engine.deleteLocalSessions(machineId, projectId, sessionIds, namespace)
+            return c.json(result)
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error)
+            if (msg === 'machine_not_found') return c.json({ error: 'Machine not found' }, 404)
+            if (msg.includes('RPC handler not registered')) return c.json({ error: 'Machine runner not available' }, 503)
+            return c.json({ error: msg }, 500)
+        }
     })
 
     return app

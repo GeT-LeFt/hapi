@@ -543,6 +543,7 @@ export function SessionList(props: {
     selectedSessionId?: string | null
     localSessions?: import('@hapi/protocol/types').LocalSession[]
     onResumeLocalSession?: (sessionId: string, projectPath: string) => Promise<void>
+    onDeleteLocalSessions?: (projectId: string, sessionIds: string[]) => Promise<{ deleted: string[] }>
     onScanLocal?: () => void
     isScanLoading?: boolean
 }) {
@@ -883,6 +884,7 @@ export function SessionList(props: {
                 <LocalHistorySection
                     sessions={props.localSessions}
                     onResume={props.onResumeLocalSession}
+                    onDelete={props.onDeleteLocalSessions}
                     t={t}
                 />
             ) : null}
@@ -990,11 +992,15 @@ type LocalSession = import('@hapi/protocol/types').LocalSession
 function LocalHistorySection(props: {
     sessions: LocalSession[]
     onResume?: (sessionId: string, projectPath: string) => Promise<void>
+    onDelete?: (projectId: string, sessionIds: string[]) => Promise<{ deleted: string[] }>
     t: (key: string, params?: Record<string, string | number>) => string
 }) {
     const [collapsed, setCollapsed] = useState(true)
     const [resumeTarget, setResumeTarget] = useState<LocalSession | null>(null)
     const [isResuming, setIsResuming] = useState(false)
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+    const [isDeleting, setIsDeleting] = useState(false)
+    const [deleteConfirm, setDeleteConfirm] = useState(false)
 
     const unimported = props.sessions.filter(s => !s.isImported)
     if (unimported.length === 0) return null
@@ -1004,6 +1010,44 @@ function LocalHistorySection(props: {
         const key = s.projectPath || s.projectId
         if (!grouped.has(key)) grouped.set(key, [])
         grouped.get(key)!.push(s)
+    }
+
+    const allIds = unimported.map(s => s.sessionId)
+    const allSelected = selectedIds.size > 0 && selectedIds.size === allIds.length
+
+    const toggleSelect = (id: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
+
+    const toggleAll = () => {
+        if (allSelected) setSelectedIds(new Set())
+        else setSelectedIds(new Set(allIds))
+    }
+
+    const handleDelete = async () => {
+        if (!props.onDelete || selectedIds.size === 0) return
+        setIsDeleting(true)
+        try {
+            const byProject = new Map<string, string[]>()
+            for (const s of unimported) {
+                if (!selectedIds.has(s.sessionId)) continue
+                const pid = s.projectId
+                if (!byProject.has(pid)) byProject.set(pid, [])
+                byProject.get(pid)!.push(s.sessionId)
+            }
+            for (const [projectId, sessionIds] of byProject) {
+                await props.onDelete(projectId, sessionIds)
+            }
+            setSelectedIds(new Set())
+        } finally {
+            setIsDeleting(false)
+            setDeleteConfirm(false)
+        }
     }
 
     return (
@@ -1023,6 +1067,33 @@ function LocalHistorySection(props: {
 
                 <div className="collapsible-panel" data-open={!collapsed || undefined}>
                     <div className="collapsible-inner">
+                        {/* Toolbar: select all + delete */}
+                        <div className="flex items-center gap-2 px-3 py-1.5">
+                            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    onChange={toggleAll}
+                                    className="h-3.5 w-3.5 rounded border-gray-300 accent-[var(--app-link)]"
+                                />
+                                <span className="text-[11px] text-[var(--app-hint)]">
+                                    {props.t('sessions.localSession.selectAll')}
+                                </span>
+                            </label>
+                            {selectedIds.size > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirm(true)}
+                                    disabled={isDeleting}
+                                    className="ml-auto text-[11px] text-red-500 hover:text-red-600 transition-colors disabled:opacity-50"
+                                >
+                                    {isDeleting
+                                        ? props.t('sessions.localSession.deleting')
+                                        : props.t('sessions.localSession.deleteSelected', { n: selectedIds.size })}
+                                </button>
+                            )}
+                        </div>
+
                         <div className="flex flex-col gap-0.5 ml-3 pl-1 pr-1 py-1">
                             {Array.from(grouped.entries()).map(([path, sessions]) => (
                                 <div key={path}>
@@ -1030,24 +1101,34 @@ function LocalHistorySection(props: {
                                         {getGroupDisplayName(path)}
                                     </div>
                                     {sessions.map(s => (
-                                        <button
+                                        <div
                                             key={s.sessionId}
-                                            type="button"
-                                            onClick={() => setResumeTarget(s)}
-                                            className="flex w-full flex-col gap-1 px-2.5 py-2 text-left rounded-lg transition-colors hover:bg-[var(--app-subtle-bg)] opacity-60"
+                                            className="flex w-full items-center gap-1.5 px-2.5 py-2 rounded-lg transition-colors hover:bg-[var(--app-subtle-bg)] opacity-60"
                                         >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <span className="inline-flex items-center justify-center rounded-sm text-[8px] font-semibold leading-none bg-gray-400 text-white h-4 w-4">Lc</span>
-                                                    <span className="truncate text-sm font-medium text-[var(--app-hint)]">
-                                                        {s.preview || s.sessionId.slice(0, 8)}
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.has(s.sessionId)}
+                                                onChange={() => toggleSelect(s.sessionId)}
+                                                className="h-3.5 w-3.5 rounded border-gray-300 accent-[var(--app-link)] shrink-0 cursor-pointer"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setResumeTarget(s)}
+                                                className="flex flex-1 flex-col gap-1 text-left min-w-0"
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className="inline-flex items-center justify-center rounded-sm text-[8px] font-semibold leading-none bg-gray-400 text-white h-4 w-4">Lc</span>
+                                                        <span className="truncate text-sm font-medium text-[var(--app-hint)]">
+                                                            {s.preview || s.sessionId.slice(0, 8)}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-[11px] text-[var(--app-hint)] shrink-0 tabular-nums" title={new Date(s.lastModified).toLocaleString()}>
+                                                        {formatLocalSessionTime(s.lastModified, props.t)}
                                                     </span>
                                                 </div>
-                                                <span className="text-xs text-[var(--app-hint)] shrink-0">
-                                                    {formatLocalSessionTime(s.lastModified, props.t)}
-                                                </span>
-                                            </div>
-                                        </button>
+                                            </button>
+                                        </div>
                                     ))}
                                 </div>
                             ))}
@@ -1074,6 +1155,18 @@ function LocalHistorySection(props: {
                         setResumeTarget(null)
                     }
                 }}
+            />
+
+            <ConfirmDialog
+                isOpen={deleteConfirm}
+                onClose={() => setDeleteConfirm(false)}
+                title={props.t('sessions.localSession.deleteTitle')}
+                description={props.t('sessions.localSession.deleteDesc', { n: selectedIds.size })}
+                confirmLabel={props.t('sessions.localSession.deleteConfirm')}
+                confirmingLabel={props.t('sessions.localSession.deleting')}
+                isPending={isDeleting}
+                destructive
+                onConfirm={handleDelete}
             />
         </>
     )

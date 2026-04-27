@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { readFile } from 'node:fs/promises'
+import { readFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 
 export interface SessionMessage {
@@ -48,4 +48,29 @@ export async function readSessionMessages(projectId: string, sessionId: string):
 
     messages.sort((a, b) => a.timestamp - b.timestamp)
     return messages
+}
+
+export async function deleteLocalSessions(
+    projectId: string,
+    sessionIds: string[]
+): Promise<{ deleted: string[]; failed: Array<{ sessionId: string; error: string }> }> {
+    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+    const deleted: string[] = []
+    const failed: Array<{ sessionId: string; error: string }> = []
+
+    for (const sessionId of sessionIds) {
+        const filePath = join(claudeConfigDir, 'projects', projectId, `${sessionId}.jsonl`)
+        try {
+            if (!existsSync(filePath)) {
+                deleted.push(sessionId)
+                continue
+            }
+            await unlink(filePath)
+            deleted.push(sessionId)
+        } catch (err) {
+            failed.push({ sessionId, error: err instanceof Error ? err.message : String(err) })
+        }
+    }
+
+    return { deleted, failed }
 }

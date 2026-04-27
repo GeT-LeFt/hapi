@@ -525,4 +525,11 @@ export class ApiClient {
             body: JSON.stringify({ machineId, sessionId, projectPath })
         })
     }
+
+    async deleteLocalSessions(machineId: string, projectId: string, sessionIds: string[]): Promise<{ deleted: string[]; failed: Array<{ sessionId: string; error: string }> }> {
+        return await this.request('/api/local-sessions/delete', {
+            method: 'POST',
+            body: JSON.stringify({ machineId, projectId, sessionIds })
+        })
+    }
 }

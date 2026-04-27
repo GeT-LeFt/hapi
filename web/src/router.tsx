@@ -241,6 +241,17 @@ function SessionsPage() {
                                 navigate({ to: '/sessions/$sessionId', params: { sessionId: result.sessionId } })
                             }
                         }}
+                        onDeleteLocalSessions={async (projectId, sessionIds) => {
+                            if (!api || machines.length === 0) return { deleted: [] }
+                            const onlineMachines = machines.filter(m => m.active)
+                            if (onlineMachines.length === 0) return { deleted: [] }
+                            const result = await api.deleteLocalSessions(onlineMachines[0].id, projectId, sessionIds)
+                            if (result.deleted.length > 0) {
+                                const deletedSet = new Set(result.deleted)
+                                setLocalSessions(prev => prev.filter(s => !deletedSet.has(s.sessionId)))
+                            }
+                            return result
+                        }}
                     />
                 </div>
             </div>

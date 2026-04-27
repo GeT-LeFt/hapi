@@ -304,6 +304,21 @@ export class RpcGateway {
         return result.messages as Array<{ role: string, content: unknown, timestamp: number }>
     }
 
+    async deleteLocalSessions(
+        machineId: string,
+        projectId: string,
+        sessionIds: string[]
+    ): Promise<{ deleted: string[]; failed: Array<{ sessionId: string; error: string }> }> {
+        const result = await this.machineRpc(machineId, 'delete-local-sessions', { projectId, sessionIds }) as {
+            deleted?: string[]
+            failed?: Array<{ sessionId: string; error: string }>
+        }
+        return {
+            deleted: Array.isArray(result?.deleted) ? result.deleted : [],
+            failed: Array.isArray(result?.failed) ? result.failed : []
+        }
+    }
+
     private async sessionRpc(sessionId: string, method: string, params: unknown, timeoutMs?: number): Promise<unknown> {
         return await this.rpcCall(`${sessionId}:${method}`, params, timeoutMs)
     }

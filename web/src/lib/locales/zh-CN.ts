@@ -48,6 +48,12 @@ export default {
   'sessions.localSession.resumeDesc': '这将在目标机器上启动 Claude Code 以恢复此会话。',
   'sessions.localSession.imported': '已导入',
   'sessions.localSession.resuming': '恢复中...',
+  'sessions.localSession.selectAll': '全选',
+  'sessions.localSession.deleteSelected': '删除 ({n})',
+  'sessions.localSession.deleting': '删除中...',
+  'sessions.localSession.deleteTitle': '删除本地会话？',
+  'sessions.localSession.deleteDesc': '将永久删除 {n} 个会话文件，此操作不可恢复。',
+  'sessions.localSession.deleteConfirm': '确认删除',
 
   // Session list
   'session.item.path': '路径',
