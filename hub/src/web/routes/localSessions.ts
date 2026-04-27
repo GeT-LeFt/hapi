@@ -74,9 +74,10 @@ export function createLocalSessionsRoutes(getSyncEngine: () => SyncEngine | null
             no_machine_online: 503,
             resume_timeout: 504
         }
+        const status = (statusMap[result.code] ?? 500) as 403 | 404 | 500 | 503 | 504
         return c.json(
             { type: 'error', message: result.message, code: result.code },
-            statusMap[result.code] ?? 500
+            status
         )
     })
 
