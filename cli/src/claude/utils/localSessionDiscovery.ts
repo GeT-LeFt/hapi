@@ -34,6 +34,10 @@ function extractPreview(lines: string[]): string | undefined {
     return undefined
 }
 
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const MIN_FILE_SIZE = 1024
+const MAX_RESULTS = 50
+
 export async function discoverLocalSessions(): Promise<LocalSession[]> {
     const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
     const projectsDir = join(claudeConfigDir, 'projects')
@@ -41,6 +45,7 @@ export async function discoverLocalSessions(): Promise<LocalSession[]> {
     if (!existsSync(projectsDir)) return []
 
     const results: LocalSession[] = []
+    const cutoff = Date.now() - MAX_AGE_MS
 
     let projectDirs: string[]
     try {
@@ -73,7 +78,8 @@ export async function discoverLocalSessions(): Promise<LocalSession[]> {
                 fileStat = await stat(filePath)
             } catch { continue }
 
-            if (fileStat.size < 10) continue
+            if (fileStat.size < MIN_FILE_SIZE) continue
+            if (fileStat.mtimeMs < cutoff) continue
 
             let preview: string | undefined
             try {
@@ -96,5 +102,5 @@ export async function discoverLocalSessions(): Promise<LocalSession[]> {
     }
 
     results.sort((a, b) => b.lastModified - a.lastModified)
-    return results
+    return results.slice(0, MAX_RESULTS)
 }
