@@ -709,7 +709,7 @@ describe('session model', () => {
             expect(cache.getSession(s1.id)).toBeDefined()
         })
 
-        it('does not merge active duplicates', async () => {
+        it('does not move history while duplicate sessions are both active', async () => {
             const store = new Store(':memory:')
             const events: SyncEvent[] = []
             const cache = new SessionCache(store, createPublisher(events))
@@ -717,25 +717,92 @@ describe('session model', () => {
             const s1 = cache.getOrCreateSession(
                 'tag-1',
                 { path: '/tmp/project', host: 'localhost', flavor: 'codex', codexSessionId: 'thread-X' },
-                null,
+                {
+                    requests: { 'req-from-active-duplicate': { tool: 'Bash', arguments: {} } },
+                    completedRequests: {}
+                },
                 'default'
             )
 
-            // Mark s1 as active (simulating a live CLI connection)
+            store.messages.addMessage(s1.id, { type: 'text', text: 'history from s1' }, 'local-s1')
             cache.handleSessionAlive({ sid: s1.id, time: Date.now(), thinking: false })
 
             const s2 = cache.getOrCreateSession(
                 'tag-2',
                 { path: '/tmp/project', host: 'localhost', flavor: 'codex', codexSessionId: 'thread-X' },
-                null,
+                {
+                    requests: { 'req-from-target': { tool: 'Read', arguments: {} } },
+                    completedRequests: {}
+                },
                 'default'
             )
+            store.messages.addMessage(s2.id, { type: 'text', text: 'history from s2' }, 'local-s2')
+            cache.handleSessionAlive({ sid: s2.id, time: Date.now() + 1000, thinking: false })
 
             await cache.deduplicateByAgentSessionId(s2.id)
 
-            // s1 is active, so it should NOT be merged/deleted
+            // Both live session records keep their own histories until one of the
+            // duplicates becomes inactive. The web may still be showing either
+            // active session id, so the hub must not pick a canonical target yet.
             expect(cache.getSession(s1.id)).toBeDefined()
             expect(cache.getSession(s2.id)).toBeDefined()
+            expect(store.messages.getMessages(s1.id, 100).map((message) => (message.content as { text?: string }).text)).toEqual([
+                'history from s1'
+            ])
+            expect(store.messages.getMessages(s2.id, 100).map((message) => (message.content as { text?: string }).text)).toEqual([
+                'history from s2'
+            ])
+            expect(events.some((event) => event.type === 'messages-invalidated')).toBe(false)
+
+            const sourceRequests = cache.getSession(s1.id)?.agentState?.requests ?? {}
+            const targetRequests = cache.getSession(s2.id)?.agentState?.requests ?? {}
+            expect(sourceRequests['req-from-active-duplicate']).toBeDefined()
+            expect(targetRequests['req-from-active-duplicate']).toBeUndefined()
+            expect(targetRequests['req-from-target']).toBeDefined()
+        })
+
+        it('invalidates both sessions for history-only merges', async () => {
+            const store = new Store(':memory:')
+            const events: SyncEvent[] = []
+            const cache = new SessionCache(store, createPublisher(events))
+
+            const s1 = cache.getOrCreateSession(
+                'tag-1',
+                { path: '/tmp/project', host: 'localhost', flavor: 'codex' },
+                {
+                    requests: { 'req-from-source': { tool: 'Bash', arguments: {} } },
+                    completedRequests: {}
+                },
+                'default'
+            )
+            const s2 = cache.getOrCreateSession(
+                'tag-2',
+                { path: '/tmp/project', host: 'localhost', flavor: 'codex' },
+                {
+                    requests: { 'req-from-target': { tool: 'Read', arguments: {} } },
+                    completedRequests: {}
+                },
+                'default'
+            )
+
+            store.messages.addMessage(s1.id, { type: 'text', text: 'history from s1' }, 'local-s1')
+            store.messages.addMessage(s2.id, { type: 'text', text: 'history from s2' }, 'local-s2')
+
+            await cache.mergeSessionHistory(s1.id, s2.id, 'default', { mergeAgentState: false })
+
+            expect(store.messages.getMessages(s1.id, 100)).toHaveLength(0)
+            expect(store.messages.getMessages(s2.id, 100).map((message) => (message.content as { text?: string }).text)).toEqual([
+                'history from s1',
+                'history from s2'
+            ])
+            expect(events).toContainEqual({ type: 'messages-invalidated', sessionId: s1.id, namespace: 'default' })
+            expect(events).toContainEqual({ type: 'messages-invalidated', sessionId: s2.id, namespace: 'default' })
+
+            const sourceRequests = cache.getSession(s1.id)?.agentState?.requests ?? {}
+            const targetRequests = cache.getSession(s2.id)?.agentState?.requests ?? {}
+            expect(sourceRequests['req-from-source']).toBeDefined()
+            expect(targetRequests['req-from-source']).toBeUndefined()
+            expect(targetRequests['req-from-target']).toBeDefined()
         })
 
         it('merges duplicate after it becomes inactive via session-end', async () => {
@@ -764,12 +831,11 @@ describe('session model', () => {
                 // Mark s1 as active
                 engine.handleSessionAlive({ sid: s1.id, time: Date.now() })
 
-                // s1 is active, dedup from s2 should skip it
+                // s1 is active, so dedup keeps its live record around
                 const events: SyncEvent[] = []
                 const cache = (engine as any).sessionCache as SessionCache
                 await cache.deduplicateByAgentSessionId(s2.id)
                 expect(cache.getSession(s1.id)).toBeDefined()
-                expect(cache.getSession(s2.id)).toBeDefined()
 
                 // Now s1 ends — handleSessionEnd should trigger dedup retry
                 engine.handleSessionEnd({ sid: s1.id, time: Date.now() })
@@ -804,16 +870,22 @@ describe('session model', () => {
                 'default'
             )
 
-            // Mark s1 as active now
-            cache.handleSessionAlive({ sid: s1.id, time: Date.now() })
+            // Mark both duplicates active. The older live record should keep
+            // existing while active, because its socket may still send keepalives.
+            const now = Date.now()
+            cache.handleSessionAlive({ sid: s1.id, time: now })
+            cache.handleSessionAlive({ sid: s2.id, time: now })
 
-            // s1 is active — dedup skips it
+            // s1 is active — dedup only moves history and keeps the record.
             await cache.deduplicateByAgentSessionId(s2.id)
             expect(cache.getSession(s1.id)).toBeDefined()
+            expect(cache.getSession(s2.id)).toBeDefined()
 
-            // Simulate time passing beyond the 30s timeout
-            const expired = cache.expireInactive(Date.now() + 60_000)
+            // Simulate only s1 passing beyond the 30s timeout.
+            cache.getSession(s1.id)!.activeAt = now - 31_000
+            const expired = cache.expireInactive(now)
             expect(expired).toContain(s1.id)
+            expect(expired).not.toContain(s2.id)
 
             // Now s1 is inactive — dedup should merge it
             await cache.deduplicateByAgentSessionId(s2.id)

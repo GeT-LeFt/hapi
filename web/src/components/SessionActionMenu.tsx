@@ -13,7 +13,9 @@ type SessionActionMenuProps = {
     isOpen: boolean
     onClose: () => void
     sessionActive: boolean
+    sessionPinned: boolean
     onRename: () => void
+    onPin: () => void
     onArchive: () => void
     onDelete: () => void
     anchorPoint: { x: number; y: number }
@@ -61,6 +63,26 @@ function ArchiveIcon(props: { className?: string }) {
     )
 }
 
+function PinIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <line x1="12" x2="12" y1="17" y2="22" />
+            <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+        </svg>
+    )
+}
+
 function TrashIcon(props: { className?: string }) {
     return (
         <svg
@@ -96,7 +118,9 @@ export function SessionActionMenu(props: SessionActionMenuProps) {
         isOpen,
         onClose,
         sessionActive,
+        sessionPinned,
         onRename,
+        onPin,
         onArchive,
         onDelete,
         anchorPoint,
@@ -111,6 +135,11 @@ export function SessionActionMenu(props: SessionActionMenuProps) {
     const handleRename = () => {
         onClose()
         onRename()
+    }
+
+    const handlePin = () => {
+        onClose()
+        onPin()
     }
 
     const handleArchive = () => {
@@ -237,6 +266,16 @@ export function SessionActionMenu(props: SessionActionMenuProps) {
                 >
                     <EditIcon className="text-[var(--app-hint)]" />
                     {t('session.action.rename')}
+                </button>
+
+                <button
+                    type="button"
+                    role="menuitem"
+                    className={`${baseItemClassName} hover:bg-[var(--app-subtle-bg)]`}
+                    onClick={handlePin}
+                >
+                    <PinIcon className="text-[var(--app-hint)]" />
+                    {sessionPinned ? t('session.action.unpin') : t('session.action.pin')}
                 </button>
 
                 {sessionActive ? (

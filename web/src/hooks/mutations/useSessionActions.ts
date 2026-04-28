@@ -23,6 +23,7 @@ export function useSessionActions(
     setEffort: (effort: string | null) => Promise<void>
     renameSession: (name: string) => Promise<void>
     deleteSession: () => Promise<void>
+    pinSession: (pinned: boolean) => Promise<void>
     isPending: boolean
 } {
     const queryClient = useQueryClient()
@@ -167,6 +168,16 @@ export function useSessionActions(
         },
     })
 
+    const pinMutation = useMutation({
+        mutationFn: async (pinned: boolean) => {
+            if (!api || !sessionId) {
+                throw new Error('Session unavailable')
+            }
+            await api.pinSession(sessionId, pinned)
+        },
+        onSuccess: () => void invalidateSession(),
+    })
+
     return {
         abortSession: abortMutation.mutateAsync,
         archiveSession: archiveMutation.mutateAsync,
@@ -179,6 +190,7 @@ export function useSessionActions(
         setEffort: effortMutation.mutateAsync,
         renameSession: renameMutation.mutateAsync,
         deleteSession: deleteMutation.mutateAsync,
+        pinSession: pinMutation.mutateAsync,
         isPending: abortMutation.isPending
             || archiveMutation.isPending
             || switchMutation.isPending
@@ -189,6 +201,7 @@ export function useSessionActions(
             || modelReasoningEffortMutation.isPending
             || effortMutation.isPending
             || renameMutation.isPending
-            || deleteMutation.isPending,
+            || deleteMutation.isPending
+            || pinMutation.isPending,
     }
 }

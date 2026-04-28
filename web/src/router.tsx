@@ -106,10 +106,27 @@ function SessionsPage() {
     const { t } = useTranslation()
     const { sessions, isLoading, error, refetch } = useSessions(api)
     const { machines } = useMachines(api, true)
+    const [localSessions, setLocalSessions] = useState<import('@hapi/protocol/types').LocalSession[]>([])
+    const [isScanning, setIsScanning] = useState(false)
 
     const handleRefresh = useCallback(() => {
         void refetch()
     }, [refetch])
+
+    const handleScanLocalSessions = useCallback(async () => {
+        if (!api || machines.length === 0 || isScanning) return
+        setIsScanning(true)
+        try {
+            const onlineMachines = machines.filter(m => m.active)
+            if (onlineMachines.length === 0) return
+            const result = await api.scanLocalSessions(onlineMachines[0].id)
+            setLocalSessions(result.sessions ?? [])
+        } catch {
+            // scan failed silently
+        } finally {
+            setIsScanning(false)
+        }
+    }, [api, machines, isScanning])
 
     const projectCount = useMemo(() => new Set(sessions.map(s =>
         s.metadata?.worktree?.basePath ?? s.metadata?.path ?? 'Other'
@@ -165,6 +182,15 @@ function SessionsPage() {
                             </button>
                             <button
                                 type="button"
+                                onClick={handleScanLocalSessions}
+                                disabled={isScanning || machines.length === 0}
+                                className={`p-1.5 rounded-full transition-colors ${isScanning ? 'text-[var(--app-link)]' : 'text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)]'} disabled:opacity-40`}
+                                title={t('sessions.syncLocal')}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-5 w-5 ${isScanning ? 'animate-spin-slow' : ''}`}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 21h5v-5" /></svg>
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => navigate({ to: '/sessions/new' })}
                                 className="session-list-new-button p-1.5 rounded-full text-[var(--app-link)] transition-colors"
                                 title={t('sessions.new')}
@@ -201,6 +227,31 @@ function SessionsPage() {
                         renderHeader={false}
                         api={api}
                         machineLabelsById={machineLabelsById}
+                        localSessions={localSessions}
+                        onScanLocal={handleScanLocalSessions}
+                        isScanLoading={isScanning}
+                        onResumeLocalSession={async (sessionId, projectPath) => {
+                            if (!api || machines.length === 0) return
+                            const onlineMachines = machines.filter(m => m.active)
+                            if (onlineMachines.length === 0) return
+                            const result = await api.resumeLocalSession(onlineMachines[0].id, sessionId, projectPath)
+                            if (result.type === 'success' && result.sessionId) {
+                                setLocalSessions(prev => prev.map(s => s.sessionId === sessionId ? { ...s, isImported: true } : s))
+                                await refetch()
+                                navigate({ to: '/sessions/$sessionId', params: { sessionId: result.sessionId } })
+                            }
+                        }}
+                        onDeleteLocalSessions={async (projectId, sessionIds) => {
+                            if (!api || machines.length === 0) return { deleted: [] }
+                            const onlineMachines = machines.filter(m => m.active)
+                            if (onlineMachines.length === 0) return { deleted: [] }
+                            const result = await api.deleteLocalSessions(onlineMachines[0].id, projectId, sessionIds)
+                            if (result.deleted.length > 0) {
+                                const deletedSet = new Set(result.deleted)
+                                setLocalSessions(prev => prev.filter(s => !deletedSet.has(s.sessionId)))
+                            }
+                            return result
+                        }}
                     />
                 </div>
             </div>

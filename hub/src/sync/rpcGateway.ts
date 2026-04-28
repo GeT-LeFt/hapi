@@ -1,4 +1,4 @@
-import type { CodexCollaborationMode, PermissionMode } from '@hapi/protocol/types'
+import type { CodexCollaborationMode, PermissionMode, LocalSession } from '@hapi/protocol/types'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -285,6 +285,37 @@ export class RpcGateway {
             await this.machineRpc(machineId, 'cleanupBlobDir', { sessionId })
         } catch {
             // CLI offline — orphan GC will handle it
+        }
+    }
+
+    async scanLocalSessions(machineId: string): Promise<LocalSession[]> {
+        const result = await this.machineRpc(machineId, 'scan-local-sessions', {}) as { sessions?: unknown }
+        if (!result || typeof result !== 'object' || !Array.isArray(result.sessions)) {
+            throw new Error('Unexpected scan-local-sessions result')
+        }
+        return result.sessions as LocalSession[]
+    }
+
+    async readSessionMessages(machineId: string, projectId: string, sessionId: string): Promise<Array<{ role: string, content: unknown, timestamp: number }>> {
+        const result = await this.machineRpc(machineId, 'read-session-messages', { projectId, sessionId }) as { messages?: unknown }
+        if (!result || typeof result !== 'object' || !Array.isArray(result.messages)) {
+            return []
+        }
+        return result.messages as Array<{ role: string, content: unknown, timestamp: number }>
+    }
+
+    async deleteLocalSessions(
+        machineId: string,
+        projectId: string,
+        sessionIds: string[]
+    ): Promise<{ deleted: string[]; failed: Array<{ sessionId: string; error: string }> }> {
+        const result = await this.machineRpc(machineId, 'delete-local-sessions', { projectId, sessionIds }) as {
+            deleted?: string[]
+            failed?: Array<{ sessionId: string; error: string }>
+        }
+        return {
+            deleted: Array.isArray(result?.deleted) ? result.deleted : [],
+            failed: Array.isArray(result?.failed) ? result.failed : []
         }
     }
 

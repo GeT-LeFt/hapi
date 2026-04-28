@@ -460,6 +460,27 @@ export class ApiClient {
         })
     }
 
+    async pinSession(sessionId: string, pinned: boolean): Promise<void> {
+        await this.request(`/api/sessions/${encodeURIComponent(sessionId)}/pin`, {
+            method: 'POST',
+            body: JSON.stringify({ pinned })
+        })
+    }
+
+    async bulkDeleteSessions(ids: string[]): Promise<{ deleted: string[]; failures: { id: string; reason: string }[] }> {
+        return this.request('/api/sessions/bulk-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids })
+        })
+    }
+
+    async bulkArchiveSessions(ids: string[]): Promise<{ archived: string[]; failures: { id: string; reason: string }[] }> {
+        return this.request('/api/sessions/bulk-archive', {
+            method: 'POST',
+            body: JSON.stringify({ ids })
+        })
+    }
+
     async getLlmUsage(): Promise<{
         data: {
             updated: string
@@ -483,6 +504,32 @@ export class ApiClient {
         return await this.request('/api/voice/token', {
             method: 'POST',
             body: JSON.stringify(options || {})
+        })
+    }
+
+    async getLocalSessions(machineId?: string): Promise<{ sessions: Array<{ sessionId: string; projectPath: string; projectId: string; lastModified: number; fileSize: number; preview?: string; isImported?: boolean }> }> {
+        const query = machineId ? `?machineId=${encodeURIComponent(machineId)}` : ''
+        return await this.request(`/api/local-sessions${query}`)
+    }
+
+    async scanLocalSessions(machineId: string): Promise<{ sessions: Array<{ sessionId: string; projectPath: string; projectId: string; lastModified: number; fileSize: number; preview?: string; isImported?: boolean }> }> {
+        return await this.request('/api/local-sessions/scan', {
+            method: 'POST',
+            body: JSON.stringify({ machineId })
+        })
+    }
+
+    async resumeLocalSession(machineId: string, sessionId: string, projectPath: string): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string; code: string }> {
+        return await this.request('/api/local-sessions/resume', {
+            method: 'POST',
+            body: JSON.stringify({ machineId, sessionId, projectPath })
+        })
+    }
+
+    async deleteLocalSessions(machineId: string, projectId: string, sessionIds: string[]): Promise<{ deleted: string[]; failed: Array<{ sessionId: string; error: string }> }> {
+        return await this.request('/api/local-sessions/delete', {
+            method: 'POST',
+            body: JSON.stringify({ machineId, projectId, sessionIds })
         })
     }
 }

@@ -13,7 +13,7 @@ import { useViewportHeight } from '@/hooks/useViewportHeight'
 import { useVisibilityReporter } from '@/hooks/useVisibilityReporter'
 import { queryKeys } from '@/lib/query-keys'
 import { AppContextProvider } from '@/lib/app-context'
-import { fetchLatestMessages } from '@/lib/message-window-store'
+import { clearMessageWindow, fetchLatestMessages } from '@/lib/message-window-store'
 import { useAppGoBack } from '@/hooks/useAppGoBack'
 import { useTranslation } from '@/lib/use-translation'
 import { VoiceProvider } from '@/lib/voice-context'
@@ -238,7 +238,16 @@ function AppInner() {
         }
     }, [])
 
-    const handleSseEvent = useCallback(() => {}, [])
+    const handleSseEvent = useCallback((event: SyncEvent) => {
+        if (event.type !== 'messages-invalidated') {
+            return
+        }
+        if (!api || event.sessionId !== selectedSessionId) {
+            return
+        }
+        clearMessageWindow(event.sessionId)
+        void fetchLatestMessages(api, event.sessionId)
+    }, [api, selectedSessionId])
     const handleToast = useCallback((event: ToastEvent) => {
         const data = {
             title: event.data.title,

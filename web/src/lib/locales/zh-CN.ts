@@ -41,6 +41,19 @@ export default {
   // Sessions page
   'sessions.count': '{n} 个会话，{m} 个项目',
   'sessions.new': '新建会话',
+  'sessions.syncLocal': '同步本地会话',
+  'sessions.syncing': '同步中...',
+  'sessions.localHistory': '本地历史 (Claude Code)',
+  'sessions.localSession.resume': '恢复此会话？',
+  'sessions.localSession.resumeDesc': '这将在目标机器上启动 Claude Code 以恢复此会话。',
+  'sessions.localSession.imported': '已导入',
+  'sessions.localSession.resuming': '恢复中...',
+  'sessions.localSession.selectAll': '全选',
+  'sessions.localSession.deleteSelected': '删除 ({n})',
+  'sessions.localSession.deleting': '删除中...',
+  'sessions.localSession.deleteTitle': '删除本地会话？',
+  'sessions.localSession.deleteDesc': '将永久删除 {n} 个会话文件，此操作不可恢复。',
+  'sessions.localSession.deleteConfirm': '确认删除',
 
   // Session list
   'session.item.path': '路径',
@@ -68,7 +81,19 @@ export default {
   'session.action.rename': '重命名',
   'session.action.archive': '归档',
   'session.action.delete': '删除',
+  'session.action.pin': '置顶',
+  'session.action.unpin': '取消置顶',
   'session.action.copy': '复制',
+
+  // Bulk actions
+  'session.bulk.manage': '批量管理',
+  'session.bulk.selectAll': '全选',
+  'session.bulk.cancel': '取消',
+  'session.bulk.selected': '已选 {count} 个',
+  'session.bulk.delete': '删除',
+  'session.bulk.archive': '归档',
+  'session.bulk.confirmDelete': '确定删除选中的 {count} 个会话？此操作不可恢复。',
+  'session.bulk.confirmArchive': '确定归档选中的 {count} 个会话？',
 
   // Dialogs
   'dialog.rename.title': '重命名会话',

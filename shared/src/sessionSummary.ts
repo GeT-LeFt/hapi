@@ -21,6 +21,8 @@ export type SessionSummary = {
     pendingRequestsCount: number
     model: string | null
     effort: string | null
+    pinned: boolean
+    pinnedAt: number | null
 }
 
 export function toSessionSummary(session: Session): SessionSummary {
@@ -56,6 +58,8 @@ export function toSessionSummary(session: Session): SessionSummary {
         todoProgress,
         pendingRequestsCount,
         model: session.model,
-        effort: session.effort
+        effort: session.effort,
+        pinned: session.pinned ?? false,
+        pinnedAt: session.pinnedAt ?? null
     }
 }

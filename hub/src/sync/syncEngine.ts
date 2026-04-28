@@ -7,7 +7,7 @@
  * - No E2E encryption; data is stored as JSON in SQLite
  */
 
-import type { CodexCollaborationMode, DecryptedMessage, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
+import type { CodexCollaborationMode, DecryptedMessage, LocalSession, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { RpcRegistry } from '../socket/rpcRegistry'
@@ -27,6 +27,7 @@ import {
     type RpcWriteProjectFileResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { LocalSessionCache } from './localSessionCache'
 
 export type { Session, SyncEvent } from '@hapi/protocol/types'
 export type { Machine } from './machineCache'
@@ -82,6 +83,8 @@ export class SyncEngine {
     private readonly machineCache: MachineCache
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
+    private readonly localSessionCache: LocalSessionCache
+    private readonly store: Store
     private inactivityTimer: NodeJS.Timeout | null = null
     private readonly reloadingSessions: Set<string> = new Set()
 
@@ -91,11 +94,13 @@ export class SyncEngine {
         rpcRegistry: RpcRegistry,
         sseManager: SSEManager
     ) {
+        this.store = store
         this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.machineCache = new MachineCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
+        this.localSessionCache = new LocalSessionCache()
 
         this.sessionCache.setOnSessionDeleted((sessionId, machineId) => {
             if (machineId) {
@@ -244,6 +249,7 @@ export class SyncEngine {
         collaborationMode?: CodexCollaborationMode
     }): void {
         this.sessionCache.handleSessionAlive(payload)
+        this.triggerDedupIfNeeded(payload.sid)
     }
 
     handleSessionEnd(payload: { sid: string; time: number }): void {
@@ -353,6 +359,38 @@ export class SyncEngine {
 
     async deleteSession(sessionId: string): Promise<void> {
         await this.sessionCache.deleteSession(sessionId)
+    }
+
+    async pinSession(sessionId: string, pinned: boolean): Promise<void> {
+        await this.sessionCache.pinSession(sessionId, pinned)
+    }
+
+    async bulkDeleteSessions(sessionIds: string[]): Promise<{ deleted: string[]; failures: { id: string; reason: string }[] }> {
+        const deleted: string[] = []
+        const failures: { id: string; reason: string }[] = []
+        for (const id of sessionIds) {
+            try {
+                await this.sessionCache.deleteSession(id)
+                deleted.push(id)
+            } catch (error) {
+                failures.push({ id, reason: error instanceof Error ? error.message : 'unknown' })
+            }
+        }
+        return { deleted, failures }
+    }
+
+    async bulkArchiveSessions(sessionIds: string[]): Promise<{ archived: string[]; failures: { id: string; reason: string }[] }> {
+        const archived: string[] = []
+        const failures: { id: string; reason: string }[] = []
+        for (const id of sessionIds) {
+            try {
+                await this.archiveSession(id)
+                archived.push(id)
+            } catch (error) {
+                failures.push({ id, reason: error instanceof Error ? error.message : 'unknown' })
+            }
+        }
+        return { archived, failures }
     }
 
     async applySessionConfig(
@@ -751,5 +789,162 @@ export class SyncEngine {
         error?: string
     }> {
         return await this.rpcGateway.listSkills(sessionId)
+    }
+
+    // --- Local session discovery ---
+
+    async scanLocalSessions(machineId: string, namespace: string): Promise<LocalSession[]> {
+        const machine = this.machineCache.getMachineByNamespace(machineId, namespace)
+        if (!machine) {
+            throw new Error('machine_not_found')
+        }
+
+        const sessions = await this.rpcGateway.scanLocalSessions(machineId)
+
+        const existingSessions = this.sessionCache.getSessionsByNamespace(namespace)
+        const importedAgentIds = new Set<string>()
+        for (const s of existingSessions) {
+            const agentId = s.metadata?.claudeSessionId
+                ?? s.metadata?.codexSessionId
+                ?? s.metadata?.geminiSessionId
+                ?? s.metadata?.opencodeSessionId
+                ?? s.metadata?.cursorSessionId
+            if (agentId) importedAgentIds.add(agentId)
+        }
+
+        const enriched = sessions.map(s => ({
+            ...s,
+            isImported: importedAgentIds.has(s.sessionId)
+        }))
+
+        this.localSessionCache.updateSessions(machineId, enriched)
+        return enriched
+    }
+
+    getLocalSessions(machineId?: string): LocalSession[] {
+        if (machineId) return this.localSessionCache.getSessions(machineId)
+        return this.localSessionCache.getAllSessions()
+    }
+
+    async resumeLocalSession(
+        machineId: string,
+        sessionId: string,
+        projectPath: string,
+        namespace: string
+    ): Promise<ResumeSessionResult> {
+        const machine = this.machineCache.getMachineByNamespace(machineId, namespace)
+        if (!machine) {
+            return { type: 'error', message: 'Machine not accessible', code: 'no_machine_online' }
+        }
+
+        const localSession = this.localSessionCache.getSessions(machineId).find(s => s.sessionId === sessionId)
+        const projectId = localSession?.projectId
+
+        let historicalMessages: Array<{ role: string, content: unknown, timestamp: number }> = []
+        if (projectId) {
+            try {
+                historicalMessages = await this.rpcGateway.readSessionMessages(machineId, projectId, sessionId)
+            } catch {
+                // read failure doesn't block resume
+            }
+        }
+
+        const spawnResult = await this.rpcGateway.spawnSession(
+            machineId,
+            projectPath,
+            'claude',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            sessionId
+        )
+
+        if (spawnResult.type === 'error') {
+            return { type: 'error', message: spawnResult.message, code: 'resume_failed' }
+        }
+
+        const newSessionId = spawnResult.sessionId
+        const becameActive = await this.waitForSessionActive(newSessionId, 15_000)
+        if (!becameActive) {
+            return { type: 'error', message: 'Resume timeout', code: 'resume_timeout' }
+        }
+
+        if (historicalMessages.length > 0) {
+            try {
+                this.store.messages.importMessages(newSessionId,
+                    historicalMessages.map(m => ({
+                        content: wrapMessageForRendering(m.role, m.content),
+                        createdAt: m.timestamp
+                    }))
+                )
+            } catch {
+                // import failure doesn't block resume
+            }
+        }
+
+        const sessionTitle = localSession?.preview
+        if (sessionTitle) {
+            try {
+                await this.sessionCache.renameSession(newSessionId, sessionTitle)
+            } catch {
+                // rename failure doesn't block resume
+            }
+        }
+
+        this.localSessionCache.updateSessions(machineId,
+            this.localSessionCache.getSessions(machineId).map(s =>
+                s.sessionId === sessionId ? { ...s, isImported: true } : s
+            )
+        )
+
+        return { type: 'success', sessionId: newSessionId }
+    }
+
+    async deleteLocalSessions(
+        machineId: string,
+        projectId: string,
+        sessionIds: string[],
+        namespace: string
+    ): Promise<{ deleted: string[]; failed: Array<{ sessionId: string; error: string }> }> {
+        const machine = this.machineCache.getMachineByNamespace(machineId, namespace)
+        if (!machine) {
+            throw new Error('machine_not_found')
+        }
+
+        const result = await this.rpcGateway.deleteLocalSessions(machineId, projectId, sessionIds)
+
+        if (result.deleted.length > 0) {
+            const deletedSet = new Set(result.deleted)
+            const current = this.localSessionCache.getSessions(machineId)
+            this.localSessionCache.updateSessions(machineId, current.filter(s => !deletedSet.has(s.sessionId)))
+        }
+
+        return result
+    }
+}
+
+function wrapMessageForRendering(role: string, rawMessage: unknown): unknown {
+    if (role === 'user') {
+        const msg = rawMessage as Record<string, unknown> | undefined
+        const content = msg?.content
+        if (typeof content === 'string') return { role: 'user', content }
+        if (Array.isArray(content)) {
+            const textBlock = content.find((b: any) => b?.type === 'text' && typeof b.text === 'string')
+            if (textBlock) return { role: 'user', content: (textBlock as { text: string }).text }
+        }
+        return { role: 'user', content: typeof content === 'string' ? content : '' }
+    }
+
+    return {
+        role: 'agent',
+        content: {
+            type: 'output',
+            data: {
+                type: 'assistant',
+                message: rawMessage
+            }
+        }
     }
 }

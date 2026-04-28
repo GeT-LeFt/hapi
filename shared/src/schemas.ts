@@ -181,6 +181,8 @@ export const SessionSchema = z.object({
     model: z.string().nullable().optional().default(null),
     modelReasoningEffort: z.string().nullable().optional().default(null),
     effort: z.string().nullable().optional().default(null),
+    pinned: z.boolean().optional().default(false),
+    pinnedAt: z.number().nullable().optional().default(null),
     permissionMode: PermissionModeSchema.optional(),
     collaborationMode: CodexCollaborationModeSchema.optional()
 })
@@ -226,6 +228,9 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         type: z.literal('message-received'),
         message: DecryptedMessageSchema
     }),
+    SessionChangedSchema.extend({
+        type: z.literal('messages-invalidated')
+    }),
     MachineChangedSchema.extend({
         type: z.literal('machine-updated'),
         data: z.unknown().optional()
@@ -238,6 +243,10 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
             sessionId: z.string(),
             url: z.string()
         })
+    }),
+    SessionChangedSchema.extend({
+        type: z.literal('messages-consumed'),
+        localIds: z.array(z.string())
     }),
     SessionEventBaseSchema.extend({
         type: z.literal('heartbeat'),

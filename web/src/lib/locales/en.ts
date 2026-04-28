@@ -41,6 +41,19 @@ export default {
   // Sessions page
   'sessions.count': '{n} sessions in {m} projects',
   'sessions.new': 'New Session',
+  'sessions.syncLocal': 'Sync local sessions',
+  'sessions.syncing': 'Syncing...',
+  'sessions.localHistory': 'Local History (Claude Code)',
+  'sessions.localSession.resume': 'Resume this session?',
+  'sessions.localSession.resumeDesc': 'This will start Claude Code on the target machine to resume this session.',
+  'sessions.localSession.imported': 'Imported',
+  'sessions.localSession.resuming': 'Resuming...',
+  'sessions.localSession.selectAll': 'Select all',
+  'sessions.localSession.deleteSelected': 'Delete ({n})',
+  'sessions.localSession.deleting': 'Deleting...',
+  'sessions.localSession.deleteTitle': 'Delete local sessions?',
+  'sessions.localSession.deleteDesc': 'This will permanently delete {n} session file(s) from disk. This cannot be undone.',
+  'sessions.localSession.deleteConfirm': 'Delete',
 
   // Session list
   'session.item.path': 'path',
@@ -68,7 +81,19 @@ export default {
   'session.action.rename': 'Rename',
   'session.action.archive': 'Archive',
   'session.action.delete': 'Delete',
+  'session.action.pin': 'Pin',
+  'session.action.unpin': 'Unpin',
   'session.action.copy': 'Copy',
+
+  // Bulk actions
+  'session.bulk.manage': 'Batch manage',
+  'session.bulk.selectAll': 'Select all',
+  'session.bulk.cancel': 'Cancel',
+  'session.bulk.selected': '{count} selected',
+  'session.bulk.delete': 'Delete',
+  'session.bulk.archive': 'Archive',
+  'session.bulk.confirmDelete': 'Delete {count} sessions? This cannot be undone.',
+  'session.bulk.confirmArchive': 'Archive {count} sessions?',
 
   // Dialogs
   'dialog.rename.title': 'Rename Session',

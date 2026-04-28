@@ -1,5 +1,5 @@
 import { logger } from '@/ui/logger'
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'fs/promises'
+import { access, mkdir, mkdtemp, readdir, rm, writeFile } from 'fs/promises'
 import { join, resolve, sep } from 'path'
 import { rmSync } from 'node:fs'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
@@ -63,7 +63,12 @@ async function getOrCreateUploadDir(sessionId?: string): Promise<string> {
     const sessionKey = getSessionKey(sessionId)
     const existing = uploadDirs.get(sessionKey)
     if (existing) {
-        return existing
+        try {
+            await access(existing)
+            return existing
+        } catch {
+            uploadDirs.delete(sessionKey)
+        }
     }
 
     const inflight = uploadDirPromises.get(sessionKey)
