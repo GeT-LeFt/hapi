@@ -1001,6 +1001,8 @@ function LocalHistorySection(props: {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [isDeleting, setIsDeleting] = useState(false)
     const [deleteConfirm, setDeleteConfirm] = useState(false)
+    const [deleteGroupTarget, setDeleteGroupTarget] = useState<{ projectId: string; path: string; sessionIds: string[] } | null>(null)
+    const [isDeletingGroup, setIsDeletingGroup] = useState(false)
 
     const unimported = props.sessions.filter(s => !s.isImported)
     if (unimported.length === 0) return null
@@ -1047,6 +1049,22 @@ function LocalHistorySection(props: {
         } finally {
             setIsDeleting(false)
             setDeleteConfirm(false)
+        }
+    }
+
+    const handleDeleteGroup = async () => {
+        if (!props.onDelete || !deleteGroupTarget) return
+        setIsDeletingGroup(true)
+        try {
+            await props.onDelete(deleteGroupTarget.projectId, deleteGroupTarget.sessionIds)
+            setSelectedIds(prev => {
+                const next = new Set(prev)
+                for (const id of deleteGroupTarget.sessionIds) next.delete(id)
+                return next
+            })
+        } finally {
+            setIsDeletingGroup(false)
+            setDeleteGroupTarget(null)
         }
     }
 
@@ -1097,8 +1115,24 @@ function LocalHistorySection(props: {
                         <div className="flex flex-col gap-0.5 ml-3 pl-1 pr-1 py-1">
                             {Array.from(grouped.entries()).map(([path, sessions]) => (
                                 <div key={path}>
-                                    <div className="text-xs font-medium text-[var(--app-hint)] px-2.5 py-1 truncate" title={path}>
-                                        {getGroupDisplayName(path)}
+                                    <div className="flex items-center gap-1 px-2.5 py-1 group">
+                                        <div className="text-xs font-medium text-[var(--app-hint)] truncate flex-1" title={path}>
+                                            {getGroupDisplayName(path)}
+                                        </div>
+                                        {props.onDelete && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setDeleteGroupTarget({
+                                                    projectId: sessions[0].projectId,
+                                                    path,
+                                                    sessionIds: sessions.map(s => s.sessionId),
+                                                })}
+                                                className="opacity-0 group-hover:opacity-100 text-[11px] text-red-500 hover:text-red-600 transition-opacity shrink-0"
+                                                title={props.t('sessions.localSession.deleteGroup', { n: sessions.length })}
+                                            >
+                                                {props.t('sessions.localSession.deleteGroup', { n: sessions.length })}
+                                            </button>
+                                        )}
                                     </div>
                                     {sessions.map(s => (
                                         <div
@@ -1167,6 +1201,21 @@ function LocalHistorySection(props: {
                 isPending={isDeleting}
                 destructive
                 onConfirm={handleDelete}
+            />
+
+            <ConfirmDialog
+                isOpen={!!deleteGroupTarget}
+                onClose={() => setDeleteGroupTarget(null)}
+                title={props.t('sessions.localSession.deleteGroupTitle')}
+                description={props.t('sessions.localSession.deleteGroupDesc', {
+                    n: deleteGroupTarget?.sessionIds.length ?? 0,
+                    path: deleteGroupTarget ? getGroupDisplayName(deleteGroupTarget.path) : '',
+                })}
+                confirmLabel={props.t('sessions.localSession.deleteConfirm')}
+                confirmingLabel={props.t('sessions.localSession.deleting')}
+                isPending={isDeletingGroup}
+                destructive
+                onConfirm={handleDeleteGroup}
             />
         </>
     )

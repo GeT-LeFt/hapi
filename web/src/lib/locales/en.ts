@@ -54,6 +54,9 @@ export default {
   'sessions.localSession.deleteTitle': 'Delete local sessions?',
   'sessions.localSession.deleteDesc': 'This will permanently delete {n} session file(s) from disk. This cannot be undone.',
   'sessions.localSession.deleteConfirm': 'Delete',
+  'sessions.localSession.deleteGroup': 'Delete all ({n})',
+  'sessions.localSession.deleteGroupTitle': 'Delete all local sessions in project?',
+  'sessions.localSession.deleteGroupDesc': 'This will permanently delete {n} local session(s) under "{path}". This cannot be undone.',
 
   // Session list
   'session.item.path': 'path',
