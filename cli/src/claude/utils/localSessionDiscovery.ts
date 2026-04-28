@@ -10,24 +10,14 @@ function reverseProjectPath(encodedDir: string): string {
     return encodedDir
 }
 
-function extractPreview(lines: string[]): string | undefined {
+function extractPreview(headLines: string[], tailLines: string[]): string | undefined {
     let firstUserMessage: string | undefined
     let lastTitle: string | undefined
 
-    for (const line of lines) {
+    for (const line of headLines) {
         if (!line.trim()) continue
         try {
             const parsed = JSON.parse(line)
-
-            if (parsed.type === 'assistant' && Array.isArray(parsed.message?.content)) {
-                for (const block of parsed.message.content) {
-                    if (block?.type === 'tool_use' && typeof block.name === 'string' &&
-                        block.name.includes('change_title') && typeof block.input?.title === 'string') {
-                        lastTitle = block.input.title
-                    }
-                }
-            }
-
             if (!firstUserMessage && (parsed.type === 'human' || parsed.type === 'user')) {
                 const text = typeof parsed.message === 'string'
                     ? parsed.message
@@ -38,6 +28,23 @@ function extractPreview(lines: string[]): string | undefined {
                             : undefined
                 if (text && typeof text === 'string') {
                     firstUserMessage = text.slice(0, 100)
+                }
+            }
+        } catch {
+            // skip malformed lines
+        }
+    }
+
+    for (const line of tailLines) {
+        if (!line.trim()) continue
+        try {
+            const parsed = JSON.parse(line)
+            if (parsed.type === 'assistant' && Array.isArray(parsed.message?.content)) {
+                for (const block of parsed.message.content) {
+                    if (block?.type === 'tool_use' && typeof block.name === 'string' &&
+                        block.name.includes('change_title') && typeof block.input?.title === 'string') {
+                        lastTitle = block.input.title
+                    }
                 }
             }
         } catch {
@@ -98,8 +105,10 @@ export async function discoverLocalSessions(): Promise<LocalSession[]> {
             let preview: string | undefined
             try {
                 const content = await readFile(filePath, 'utf-8')
-                const lines = content.split('\n').slice(0, 50)
-                preview = extractPreview(lines)
+                const allLines = content.split('\n')
+                const tailLines = allLines.slice(-50)
+                const headLines = allLines.slice(0, 20)
+                preview = extractPreview(headLines, tailLines)
             } catch {
                 // skip preview on error
             }
