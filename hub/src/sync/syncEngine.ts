@@ -884,6 +884,15 @@ export class SyncEngine {
             }
         }
 
+        const sessionTitle = localSession?.preview
+        if (sessionTitle) {
+            try {
+                await this.sessionCache.renameSession(newSessionId, sessionTitle)
+            } catch {
+                // rename failure doesn't block resume
+            }
+        }
+
         this.localSessionCache.updateSessions(machineId,
             this.localSessionCache.getSessions(machineId).map(s =>
                 s.sessionId === sessionId ? { ...s, isImported: true } : s
