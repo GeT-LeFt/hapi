@@ -874,7 +874,10 @@ export class SyncEngine {
         if (historicalMessages.length > 0) {
             try {
                 this.store.messages.importMessages(newSessionId,
-                    historicalMessages.map(m => ({ content: m.content, createdAt: m.timestamp }))
+                    historicalMessages.map(m => ({
+                        content: wrapMessageForRendering(m.role, m.content),
+                        createdAt: m.timestamp
+                    }))
                 )
             } catch {
                 // import failure doesn't block resume
@@ -910,5 +913,29 @@ export class SyncEngine {
         }
 
         return result
+    }
+}
+
+function wrapMessageForRendering(role: string, rawMessage: unknown): unknown {
+    if (role === 'user') {
+        const msg = rawMessage as Record<string, unknown> | undefined
+        const content = msg?.content
+        if (typeof content === 'string') return { role: 'user', content }
+        if (Array.isArray(content)) {
+            const textBlock = content.find((b: any) => b?.type === 'text' && typeof b.text === 'string')
+            if (textBlock) return { role: 'user', content: (textBlock as { text: string }).text }
+        }
+        return { role: 'user', content: typeof content === 'string' ? content : '' }
+    }
+
+    return {
+        role: 'agent',
+        content: {
+            type: 'output',
+            data: {
+                type: 'assistant',
+                message: rawMessage
+            }
+        }
     }
 }
