@@ -11,11 +11,24 @@ function reverseProjectPath(encodedDir: string): string {
 }
 
 function extractPreview(lines: string[]): string | undefined {
+    let firstUserMessage: string | undefined
+    let lastTitle: string | undefined
+
     for (const line of lines) {
         if (!line.trim()) continue
         try {
             const parsed = JSON.parse(line)
-            if (parsed.type === 'human' || parsed.role === 'user') {
+
+            if (parsed.type === 'assistant' && Array.isArray(parsed.message?.content)) {
+                for (const block of parsed.message.content) {
+                    if (block?.type === 'tool_use' && typeof block.name === 'string' &&
+                        block.name.includes('change_title') && typeof block.input?.title === 'string') {
+                        lastTitle = block.input.title
+                    }
+                }
+            }
+
+            if (!firstUserMessage && (parsed.type === 'human' || parsed.type === 'user')) {
                 const text = typeof parsed.message === 'string'
                     ? parsed.message
                     : typeof parsed.message?.content === 'string'
@@ -24,14 +37,15 @@ function extractPreview(lines: string[]): string | undefined {
                             ? parsed.message.content.find((b: any) => b.type === 'text')?.text
                             : undefined
                 if (text && typeof text === 'string') {
-                    return text.slice(0, 100)
+                    firstUserMessage = text.slice(0, 100)
                 }
             }
         } catch {
             // skip malformed lines
         }
     }
-    return undefined
+
+    return lastTitle || firstUserMessage
 }
 
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
@@ -84,7 +98,7 @@ export async function discoverLocalSessions(): Promise<LocalSession[]> {
             let preview: string | undefined
             try {
                 const content = await readFile(filePath, 'utf-8')
-                const lines = content.split('\n').slice(0, 30)
+                const lines = content.split('\n').slice(0, 50)
                 preview = extractPreview(lines)
             } catch {
                 // skip preview on error
