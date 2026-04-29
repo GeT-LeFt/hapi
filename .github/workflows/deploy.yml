@@ -116,6 +116,7 @@ jobs:
               --env-file /opt/hapi/.env.staging \
               -e HAPI_LISTEN_PORT=3007 \
               -e HAPI_API_URL=http://localhost:3007 \
+              -e HAPI_DISABLE_RUNNER=true \
               "$IMAGE"
 
             # --- Phase 4: Health check ---

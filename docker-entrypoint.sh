@@ -22,8 +22,12 @@ done
 HAPI_HOME="${HAPI_HOME:-/root/.hapi}"
 rm -f "${HAPI_HOME}/runner.state.json" "${HAPI_HOME}/runner.state.json.lock"
 
-echo "[entrypoint] Starting runner (api=${HAPI_API_URL:-http://localhost:${HAPI_PORT}})..."
-export HAPI_API_URL="${HAPI_API_URL:-http://localhost:${HAPI_PORT}}"
-/usr/bin/hapi runner start || echo "[entrypoint] Runner start returned non-zero, check logs."
-
-wait $HUB_PID
+if [ "${HAPI_DISABLE_RUNNER:-false}" = "true" ]; then
+  echo "[entrypoint] Runner disabled (HAPI_DISABLE_RUNNER=true), running hub only."
+  wait $HUB_PID
+else
+  echo "[entrypoint] Starting runner (api=${HAPI_API_URL:-http://localhost:${HAPI_PORT}})..."
+  export HAPI_API_URL="${HAPI_API_URL:-http://localhost:${HAPI_PORT}}"
+  /usr/bin/hapi runner start || echo "[entrypoint] Runner start returned non-zero, check logs."
+  wait $HUB_PID
+fi
