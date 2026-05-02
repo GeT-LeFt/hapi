@@ -53,6 +53,14 @@ export function CopyIcon(props: IconProps) {
     )
 }
 
+export function ArrowDownIcon(props: IconProps) {
+    return createIcon(
+        <path d="M12 5v14m0 0l-6-6m6 6l6-6" />,
+        props,
+        2
+    )
+}
+
 export function CheckIcon(props: IconProps) {
     return createIcon(
         <polyline points="20 6 9 17 4 12" />,

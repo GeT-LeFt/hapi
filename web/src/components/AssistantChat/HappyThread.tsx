@@ -8,6 +8,7 @@ import { HappyUserMessage } from '@/components/AssistantChat/messages/UserMessag
 import { HappySystemMessage } from '@/components/AssistantChat/messages/SystemMessage'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/Spinner'
+import { ArrowDownIcon } from '@/components/icons'
 import { useTranslation } from '@/lib/use-translation'
 
 function NewMessagesIndicator(props: { count: number; onClick: () => void }) {
@@ -22,6 +23,20 @@ function NewMessagesIndicator(props: { count: number; onClick: () => void }) {
             className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-[var(--app-button)] text-[var(--app-button-text)] px-3 py-1.5 rounded-full text-sm font-medium shadow-lg animate-bounce-in z-10"
         >
             {t('misc.newMessage', { n: props.count })} &#8595;
+        </button>
+    )
+}
+
+function ScrollToBottomButton(props: { visible: boolean; onClick: () => void }) {
+    if (!props.visible) return null
+
+    return (
+        <button
+            onClick={props.onClick}
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-bg)] text-[var(--app-hint)] shadow-md transition-colors hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)]"
+            aria-label="Scroll to bottom"
+        >
+            <ArrowDownIcon className="h-4 w-4" />
         </button>
     )
 }
@@ -451,6 +466,7 @@ export function HappyThread(props: {
                     </div>
                 </ThreadPrimitive.Viewport>
                 <NewMessagesIndicator count={props.pendingCount} onClick={scrollToBottom} />
+                <ScrollToBottomButton visible={!autoScrollEnabled && props.pendingCount === 0} onClick={scrollToBottom} />
             </ThreadPrimitive.Root>
         </HappyChatProvider>
     )
