@@ -54,6 +54,9 @@ export default {
   'sessions.localSession.deleteTitle': '删除本地会话？',
   'sessions.localSession.deleteDesc': '将永久删除 {n} 个会话文件，此操作不可恢复。',
   'sessions.localSession.deleteConfirm': '确认删除',
+  'sessions.localSession.deleteGroup': '删除全部 ({n})',
+  'sessions.localSession.deleteGroupTitle': '删除项目下所有本地会话？',
+  'sessions.localSession.deleteGroupDesc': '将永久删除 "{path}" 下的 {n} 个本地会话，此操作不可恢复。',
 
   // Session list
   'session.item.path': '路径',

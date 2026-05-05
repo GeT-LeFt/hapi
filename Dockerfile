@@ -40,13 +40,15 @@ RUN apt-get update && \
 COPY --from=builder /app/cli/dist-exe/bun-linux-x64-baseline/hapi /usr/bin/hapi
 RUN chmod +x /usr/bin/hapi
 
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 ENV HAPI_HOME=/root/.hapi
 VOLUME ["/root/.hapi"]
 
 EXPOSE 3006
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:3006/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${HAPI_LISTEN_PORT:-3006}/health || exit 1
 
-ENTRYPOINT ["/usr/bin/hapi"]
-CMD ["hub"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
